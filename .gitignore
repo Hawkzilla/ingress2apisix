@@ -1,0 +1,18 @@
+# IDE
+.idea/
+.vscode/
+
+# Binary
+bin/
+
+# Output files
+examples/output.yaml
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out

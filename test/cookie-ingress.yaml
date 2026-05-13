@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cookie-test-ingress
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/ingress.class: apisix
+    # 通过 configuration-snippet 设置 proxy_cookie_flags
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_cookie_flags sessionid SameSite=None Secure;
+      proxy_cookie_flags auth_token HttpOnly Secure;
+      proxy_cookie_flags * SameSite=Lax;
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: cookie.test.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cookie-test-backend
+                port:
+                  number: 80

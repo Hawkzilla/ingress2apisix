@@ -1,0 +1,1695 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ingress-nginx → APISIX Migration Tool</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/theme/dracula.min.css">
+<style>
+:root {
+  --bg: #0d1117;
+  --bg-card: #161b22;
+  --bg-input: #0d1117;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --accent: #58a6ff;
+  --accent-hover: #79c0ff;
+  --green: #3fb950;
+  --yellow: #d29922;
+  --red: #f85149;
+  --orange: #db6d28;
+  --purple: #bc8cff;
+  --radius: 8px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+header h1 {
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+header h1 span.logo {
+  color: var(--accent);
+}
+.nav-tabs {
+  display: flex;
+  gap: 0;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.nav-tab {
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nav-tab:hover { color: var(--text); }
+.nav-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.nav-tab .icon { font-size: 16px; }
+.tab-content { display: none; flex: 1; overflow: hidden; }
+.tab-content.active { display: flex; flex-direction: column; }
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.toolbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.btn {
+  padding: 6px 16px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn:hover { border-color: var(--text-muted); }
+.btn-primary {
+  background: #238636;
+  border-color: rgba(240,246,252,0.1);
+  color: #fff;
+}
+.btn-primary:hover { background: #2ea043; }
+.btn-accent {
+  background: #1f6feb;
+  border-color: rgba(240,246,252,0.1);
+  color: #fff;
+}
+.btn-accent:hover { background: #388bfd; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.editors {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.editor-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+.editor-pane:first-child {
+  border-right: 1px solid var(--border);
+}
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.editor-header .label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.editor-header .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-input { background: var(--accent); }
+.dot-output { background: var(--green); }
+.editor-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+.editor-body .CodeMirror {
+  height: 100%;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.drop-zone {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 14px;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  background: #1a2233;
+  color: var(--accent);
+}
+.drop-zone .icon-big { font-size: 48px; opacity: 0.4; }
+.drop-zone input[type="file"] { display: none; }
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 20px;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-green { background: rgba(63,185,80,0.15); color: var(--green); }
+.badge-yellow { background: rgba(210,153,34,0.15); color: var(--yellow); }
+.badge-red { background: rgba(248,81,73,0.15); color: var(--red); }
+.badge-blue { background: rgba(88,166,255,0.15); color: var(--accent); }
+.badge-purple { background: rgba(188,140,255,0.15); color: var(--purple); }
+.badge-orange { background: rgba(219,109,40,0.15); color: var(--orange); }
+.panel-bottom {
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+  max-height: 35vh;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  z-index: 1;
+}
+.panel-body {
+  padding: 12px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+}
+.warn-item {
+  padding: 4px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.warn-item::before { content: "!"; color: var(--yellow); font-weight: 700; flex-shrink: 0; }
+.error-item {
+  padding: 4px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.error-item::before { content: "x"; color: var(--red); font-weight: 700; flex-shrink: 0; }
+.diff-added { color: var(--green); }
+.diff-removed { color: var(--red); }
+.check-report { font-size: 13px; line-height: 1.8; }
+.check-report .stat { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.options-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 20px;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px; height: 14px;
+}
+.file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+}
+.file-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  font-size: 12px;
+}
+.file-chip .remove {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+}
+.file-chip .remove:hover { color: var(--red); }
+.hidden { display: none !important; }
+/* Docs */
+.docs-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.docs-sidebar {
+  width: 240px;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  flex-shrink: 0;
+  padding: 8px 0;
+}
+.docs-sidebar-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.docs-sidebar-item:hover { color: var(--text); background: rgba(88,166,255,0.06); }
+.docs-sidebar-item.active { color: var(--text); background: rgba(88,166,255,0.1); border-left: 2px solid var(--accent); }
+.docs-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 48px;
+  line-height: 1.7;
+}
+.docs-content h1 { font-size: 24px; margin-bottom: 16px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.docs-content h2 { font-size: 20px; margin-top: 28px; margin-bottom: 12px; color: var(--text); }
+.docs-content h3 { font-size: 16px; margin-top: 20px; margin-bottom: 8px; color: var(--accent); }
+.docs-content h4 { font-size: 14px; margin-top: 16px; margin-bottom: 6px; color: var(--text); }
+.docs-content p { margin-bottom: 10px; color: var(--text-muted); font-size: 14px; }
+.docs-content code {
+  background: rgba(110,118,129,0.2);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.docs-content pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  overflow-x: auto;
+  margin-bottom: 14px;
+}
+.docs-content pre code {
+  background: none;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.docs-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.docs-content th {
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
+}
+.docs-content td {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.docs-content tr:hover td { background: rgba(88,166,255,0.03); }
+.docs-content blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 8px 16px;
+  margin: 12px 0;
+  background: rgba(88,166,255,0.05);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.docs-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 24px 0;
+}
+.docs-content a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.docs-content a:hover { text-decoration: underline; }
+.docs-content ul, .docs-content ol { padding-left: 20px; margin-bottom: 10px; }
+.docs-content li { margin-bottom: 4px; font-size: 14px; color: var(--text-muted); }
+mark.search-highlight {
+  background: #58a6ff55;
+  color: var(--text);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.docs-search {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.docs-search input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+.docs-search input:focus { border-color: var(--accent); }
+.docs-search input::placeholder { color: var(--text-muted); }
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+/* Feedback */
+.feedback-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.feedback-form-wrap {
+  width: 420px;
+  padding: 24px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-card);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+.feedback-list-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+.feedback-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  transition: border-color 0.15s;
+}
+.feedback-card:hover { border-color: var(--text-muted); }
+.feedback-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.feedback-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.feedback-card-body {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.feedback-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.feedback-delete-btn {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 14px;
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+.feedback-delete-btn:hover { color: var(--red); background: rgba(248,81,73,0.1); }
+.fb-pagination-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.fb-pagination-btn:hover { border-color: var(--text-muted); }
+.fb-pagination-btn:disabled { opacity: 0.4; cursor: default; }
+.fb-pagination-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ingress-nginx <span style="color:var(--accent);font-size:14px;margin:0 4px;">→</span> APISIX</h1>
+  <span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
+    Migration Tool {{VERSION}} &nbsp;by&nbsp; <img src="/static/logo.png" alt="Easystack" style="height:14px;vertical-align:middle;filter:brightness(0) invert(1);">&nbsp; &copy; ECNS Team
+  </span>
+</header>
+
+<div id="announcement-bar" style="background:linear-gradient(90deg,#1a1e2e,#16202a);border-bottom:1px solid var(--border);padding:10px 24px;display:none;align-items:center;justify-content:space-between;flex-shrink:0;">
+  <span id="announcement-content" style="font-size:13px;color:var(--text-muted);display:flex;align-items:center;gap:8px;"></span>
+  <button onclick="this.parentElement.style.display='none'" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0 4px;">&#10005;</button>
+</div>
+
+<div class="nav-tabs">
+  <div class="nav-tab active" data-tab="convert"><span class="icon">&#9881;</span> Convert</div>
+  <div class="nav-tab" data-tab="check"><span class="icon">&#9745;</span> Check</div>
+  <div class="nav-tab" data-tab="migrate"><span class="icon">&#10140;</span> Migrate</div>
+  <div class="nav-tab" data-tab="docs"><span class="icon">&#128214;</span> Docs</div>
+  <div class="nav-tab" data-tab="feedback"><span class="icon">&#128172;</span> Feedback</div>
+  <div class="nav-tab hidden" data-tab="admin"><span class="icon">&#9881;</span> Admin</div>
+</div>
+
+<!-- Admin Tab (hidden, accessed via #admin hash) -->
+<div class="tab-content" id="tab-admin" style="display:none;">
+  <div class="toolbar">
+    <button class="btn btn-primary" onclick="showAnnouncementForm()">&#10010; New Announcement</button>
+    <div class="toolbar-right">
+      <button class="btn btn-sm" onclick="loadAnnouncements(true)">Refresh</button>
+    </div>
+  </div>
+  <div id="admin-ann-form" style="display:none;padding:20px;border-bottom:1px solid var(--border);background:var(--bg-card);">
+    <h3 style="margin-bottom:12px;font-size:16px;color:var(--text);">Edit Announcement</h3>
+    <input type="hidden" id="ann-edit-id" value="0">
+    <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+      <div>
+        <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Level</label>
+        <select id="ann-level" style="padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+          <option value="info">Info</option>
+          <option value="warn">Warning</option>
+          <option value="fix">Fix</option>
+        </select>
+      </div>
+      <div style="flex:1;">
+        <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Title</label>
+        <input type="text" id="ann-title" placeholder="Title" style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Active</label>
+        <label class="toggle"><input type="checkbox" id="ann-active" checked></label>
+      </div>
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Content</label>
+      <textarea id="ann-content-input" rows="3" placeholder="Announcement content..." style="width:100%;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;resize:vertical;"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-primary btn-sm" onclick="saveAnnouncement()">Save</button>
+      <button class="btn btn-sm" onclick="hideAnnouncementForm()">Cancel</button>
+    </div>
+  </div>
+  <div id="admin-ann-list" style="padding:0;"></div>
+</div>
+
+<!-- Convert Tab -->
+<div class="tab-content active" id="tab-convert">
+  <div class="toolbar">
+    <button class="btn btn-primary" id="convert-btn" onclick="doConvert()">&#9655; Convert</button>
+    <span style="font-size:11px;color:#f0883e;margin-left:8px;display:inline-flex;align-items:center;gap:4px;">&#9888; 当前转换结果仅供参考，生产环境请以最终测试验证结果为准</span>
+    <div class="toolbar-right">
+      <label class="toggle"><input type="checkbox" id="opt-ssl" checked> SSL Redirect</label>
+      <button class="btn btn-sm" onclick="loadExample('convert')">Load Example</button>
+      <button class="btn btn-sm" onclick="clearEditors('convert')">Clear</button>
+    </div>
+  </div>
+  <div class="editors">
+    <div class="editor-pane">
+      <div class="editor-header">
+        <span class="label"><span class="dot dot-input"></span> Input (nginx Ingress YAML)</span>
+        <button class="btn btn-sm" onclick="document.getElementById('convert-upload').click()">Upload</button>
+        <input type="file" id="convert-upload" class="hidden" accept=".yaml,.yml" onchange="handleFileUpload(this, 'convert-input')">
+      </div>
+      <div class="editor-body"><textarea id="convert-input"></textarea></div>
+    </div>
+    <div class="editor-pane">
+      <div class="editor-header">
+        <span class="label"><span class="dot dot-output"></span> Output (APISIX-ready)</span>
+        <div style="display:flex;gap:4px;">
+          <button class="btn btn-sm" onclick="copyOutput('convert-output')">Copy</button>
+          <button class="btn btn-sm btn-accent" onclick="downloadOutput('convert-output', 'apisix-ingress.yaml')">Download</button>
+        </div>
+      </div>
+      <div class="editor-body"><textarea id="convert-output"></textarea></div>
+    </div>
+  </div>
+  <div class="panel-bottom hidden" id="convert-panel">
+    <div class="panel-header">
+      <span id="convert-panel-title">Warnings</span>
+      <button class="btn btn-sm" onclick="this.closest('.panel-bottom').classList.add('hidden')">Close</button>
+    </div>
+    <div class="panel-body" id="convert-panel-body"></div>
+  </div>
+  <div class="status-bar">
+    <span class="status-item" id="convert-status">Ready</span>
+    <span class="status-item hidden" id="convert-stats"></span>
+  </div>
+</div>
+
+<!-- Check Tab -->
+<div class="tab-content" id="tab-check">
+  <div class="toolbar">
+    <button class="btn btn-primary" id="check-btn" onclick="doCheck()">&#9745; Check Annotations</button>
+    <div class="toolbar-right">
+      <button class="btn btn-sm" onclick="loadExample('check')">Load Example</button>
+      <button class="btn btn-sm" onclick="clearEditors('check')">Clear</button>
+    </div>
+  </div>
+  <div class="editors">
+    <div class="editor-pane">
+      <div class="editor-header">
+        <span class="label"><span class="dot dot-input"></span> Ingress YAML</span>
+        <button class="btn btn-sm" onclick="document.getElementById('check-upload').click()">Upload</button>
+        <input type="file" id="check-upload" class="hidden" accept=".yaml,.yml" onchange="handleFileUpload(this, 'check-input')">
+      </div>
+      <div class="editor-body"><textarea id="check-input"></textarea></div>
+    </div>
+    <div class="editor-pane">
+      <div class="editor-header">
+        <span class="label"><span class="dot dot-output"></span> Migration Status Report</span>
+      </div>
+      <div class="editor-body" style="overflow-y:auto;padding:16px;" id="check-report-area">
+        <div style="color:var(--text-muted);text-align:center;padding-top:40px;">
+          Click "Check Annotations" to analyze your Ingress
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="panel-bottom hidden" id="check-panel">
+    <div class="panel-header">
+      <span>Details</span>
+      <button class="btn btn-sm" onclick="this.closest('.panel-bottom').classList.add('hidden')">Close</button>
+    </div>
+    <div class="panel-body" id="check-panel-body"></div>
+  </div>
+  <div class="status-bar">
+    <span class="status-item" id="check-status">Ready</span>
+    <span class="status-item hidden" id="check-stats"></span>
+  </div>
+</div>
+
+<!-- Migrate Tab -->
+<div class="tab-content" id="tab-migrate">
+  <div class="toolbar">
+    <button class="btn btn-primary" id="migrate-btn" onclick="doMigrate()">&#10140; Migrate</button>
+    <div class="toolbar-right">
+      <button class="btn btn-sm" onclick="loadExample('migrate')">Load Example</button>
+      <button class="btn btn-sm" onclick="clearEditors('migrate')">Clear</button>
+    </div>
+  </div>
+  <div class="editors">
+    <div class="editor-pane">
+      <div class="editor-header">
+        <span class="label"><span class="dot dot-input"></span> Helm Template (Before)</span>
+        <button class="btn btn-sm" onclick="document.getElementById('migrate-upload').click()">Upload Charts</button>
+        <input type="file" id="migrate-upload" class="hidden" accept=".yaml,.yml,.tpl" multiple onchange="handleMultiFileUpload(this)">
+      </div>
+      <div class="file-list hidden" id="migrate-files"></div>
+      <div class="editor-body"><textarea id="migrate-input"></textarea></div>
+    </div>
+    <div class="editor-pane">
+      <div class="editor-header">
+        <span class="label"><span class="dot dot-output"></span> Migrated (After)</span>
+        <div style="display:flex;gap:4px;">
+          <button class="btn btn-sm" onclick="copyOutput('migrate-output')">Copy</button>
+          <button class="btn btn-sm btn-accent" onclick="downloadMigratedChart()">Download Charts</button>
+        </div>
+      </div>
+      <div class="editor-body"><textarea id="migrate-output"></textarea></div>
+    </div>
+  </div>
+  <div class="panel-bottom hidden" id="migrate-panel">
+    <div class="panel-header">
+      <span id="migrate-panel-title">Report</span>
+      <button class="btn btn-sm" onclick="this.closest('.panel-bottom').classList.add('hidden')">Close</button>
+    </div>
+    <div class="panel-body" id="migrate-panel-body"></div>
+  </div>
+  <div class="status-bar">
+    <span class="status-item" id="migrate-status">Ready</span>
+    <span class="status-item hidden" id="migrate-stats"></span>
+  </div>
+</div>
+
+<!-- Docs Tab -->
+<div class="tab-content" id="tab-docs">
+  <div class="toolbar">
+    <button class="btn btn-sm active" id="doc-btn-migration" onclick="loadDoc('migration')">&#128214; EOS 迁移指南</button>
+    <button class="btn btn-sm" id="doc-btn-webui" onclick="loadDoc('webui')">&#128444; 页面使用指南（当前）</button>
+    <button class="btn btn-sm" id="doc-btn-usage" onclick="loadDoc('usage')">&#128209; CLI 使用指南</button>
+    <button class="btn btn-sm" id="doc-btn-annotations" onclick="loadDoc('annotations')">&#128218; APISIX-INGRESS 注解参考</button>
+    <div class="toolbar-right">
+      <input type="text" id="doc-search-input" placeholder="Search in document..." oninput="searchDocContent(this.value)" style="padding:4px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;width:200px;">
+      <span id="doc-search-count" style="font-size:11px;color:var(--text-muted);min-width:60px;"></span>
+      <button class="btn btn-sm" id="doc-search-prev" onclick="searchDocNav(-1)" disabled>&#9650;</button>
+      <button class="btn btn-sm" id="doc-search-next" onclick="searchDocNav(1)" disabled>&#9660;</button>
+    </div>
+  </div>
+  <div class="docs-container">
+    <div class="docs-sidebar" id="docs-toc">
+      <div class="docs-search"><input type="text" id="docs-search" placeholder="Filter sections..." oninput="filterDocs(this.value)"></div>
+    </div>
+    <div class="docs-content" id="docs-body">
+      <div style="color:var(--text-muted);text-align:center;padding-top:40px;">Loading document...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Feedback Tab -->
+<div class="tab-content" id="tab-feedback">
+  <div class="feedback-container">
+    <div class="feedback-form-wrap">
+      <h3 style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--text);">&#128172; Submit Feedback</h3>
+      <div style="display:flex;gap:12px;margin-bottom:12px;">
+        <div style="flex:1;">
+          <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;">Category</label>
+          <select id="fb-category" style="width:100%;padding:8px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;outline:none;">
+            <option value="tool">&#128295; Tool Issues (工具问题)</option>
+            <option value="doc">&#128214; Doc Issues (文档问题)</option>
+            <option value="feature">&#128161; Feature Requests (功能建议)</option>
+            <option value="general">&#128172; Other (其他)</option>
+          </select>
+        </div>
+        <div style="flex:2;">
+          <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;">Title <span style="color:var(--red);">*</span></label>
+          <input type="text" id="fb-title" placeholder="Brief title..." style="width:100%;padding:8px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;outline:none;">
+        </div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;">Content <span style="color:var(--red);">*</span></label>
+        <textarea id="fb-content" rows="4" placeholder="Describe the issue, suggestion, or feedback..." style="width:100%;padding:8px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;outline:none;resize:vertical;font-family:inherit;"></textarea>
+      </div>
+      <div style="display:flex;gap:12px;align-items:flex-end;">
+        <div style="flex:1;">
+          <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;">报告人</label>
+          <input type="text" id="fb-contact" placeholder="Email 或 GitHub ID..." style="width:100%;padding:8px 10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;outline:none;">
+        </div>
+        <button class="btn btn-primary" onclick="submitFeedback()" style="height:36px;">&#10148; Submit</button>
+      </div>
+    </div>
+    <div class="feedback-list-wrap">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h3 style="font-size:16px;font-weight:600;color:var(--text);">Messages</h3>
+        <span id="fb-total" style="font-size:12px;color:var(--text-muted);"></span>
+      </div>
+      <div id="fb-list" style="display:flex;flex-direction:column;gap:12px;">
+        <div style="color:var(--text-muted);text-align:center;padding:40px 0;">Loading...</div>
+      </div>
+      <div id="fb-pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/yaml/yaml.min.js"></script>
+<script>
+// --- Example data ---
+const EXAMPLES = {
+convert: `apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: example-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/auth-type: "basic"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    kubernetes.io/ingress.class: nginx
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: example.com
+      http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: example-svc
+                port:
+                  number: 80`,
+
+check: `apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: check-example
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/proxy-cookie-path: "/old /new"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/auth-tls-verify-client: "on"
+    nginx.ingress.kubernetes.io/custom-http-errors: "404,500"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: my-svc
+                port:
+                  number: 80`,
+
+migrate: `apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-ingress
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: {{ .Values.timeout | default "30" }}
+    nginx.ingress.kubernetes.io/limit-rps: {{ .Values.rateLimit }}
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_cookie_flags sessionid SameSite=None Secure;
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: {{ .Values.host }}
+      http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ .Release.Name }}-api
+                port:
+                  number: 80`
+};
+
+// --- CodeMirror editors ---
+const cmOpts = { theme: 'dracula', lineNumbers: true, mode: 'yaml', tabSize: 2, indentWithTabs: false, lineWrapping: true };
+const editors = {};
+
+function initEditors() {
+  editors['convert-input'] = CodeMirror.fromTextArea(document.getElementById('convert-input'), cmOpts);
+  editors['convert-output'] = CodeMirror.fromTextArea(document.getElementById('convert-output'), { ...cmOpts, readOnly: true });
+  editors['check-input'] = CodeMirror.fromTextArea(document.getElementById('check-input'), cmOpts);
+  editors['migrate-input'] = CodeMirror.fromTextArea(document.getElementById('migrate-input'), cmOpts);
+  editors['migrate-output'] = CodeMirror.fromTextArea(document.getElementById('migrate-output'), { ...cmOpts, readOnly: true });
+}
+
+// --- Tab navigation ---
+function switchTab(name, updateHash) {
+  // Show admin tab if navigating to #admin
+  if (name === 'admin') {
+    document.querySelector('.nav-tab[data-tab="admin"]').classList.remove('hidden');
+    document.getElementById('tab-admin').style.display = '';
+    loadAnnouncements(true);
+  }
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  const tab = document.querySelector(`.nav-tab[data-tab="${name}"]`);
+  if (tab) {
+    tab.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+  }
+  setTimeout(() => Object.values(editors).forEach(e => e.refresh()), 50);
+  if (updateHash !== false) {
+    history.replaceState(null, '', '#' + name);
+  }
+}
+
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+// --- Utility ---
+function loadExample(mode) {
+  if (mode === 'check') editors['check-input'].setValue(EXAMPLES.check);
+  else if (mode === 'migrate') editors['migrate-input'].setValue(EXAMPLES.migrate);
+  else editors['convert-input'].setValue(EXAMPLES.convert);
+}
+
+function clearEditors(mode) {
+  if (mode === 'convert') {
+    editors['convert-input'].setValue('');
+    editors['convert-output'].setValue('');
+    hidePanel('convert');
+  } else if (mode === 'check') {
+    editors['check-input'].setValue('');
+    document.getElementById('check-report-area').innerHTML = '<div style="color:var(--text-muted);text-align:center;padding-top:40px;">Click "Check Annotations" to analyze your Ingress</div>';
+    hidePanel('check');
+  } else {
+    editors['migrate-input'].setValue('');
+    editors['migrate-output'].setValue('');
+    hidePanel('migrate');
+  }
+  setStatus(mode, 'Ready');
+}
+
+function copyOutput(id) {
+  const val = editors[id] ? editors[id].getValue() : '';
+  navigator.clipboard.writeText(val).then(() => {
+    const btn = event.target;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
+}
+
+function downloadOutput(editorId, filename) {
+  const val = editors[editorId] ? editors[editorId].getValue() : '';
+  if (!val.trim()) return;
+  const blob = new Blob([val], { type: 'text/yaml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadMigratedChart() {
+  const yaml = editors['migrate-input'].getValue().trim();
+  if (!yaml) { setStatus('migrate', 'No input to download'); return; }
+
+  setStatus('migrate', 'Preparing download...');
+
+  try {
+    const resp = await fetch('/api/download/migrate-tar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml })
+    });
+    if (!resp.ok) throw new Error('Download failed');
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'migrated-charts.tar.gz';
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus('migrate', 'Download started', 'badge-green');
+  } catch (err) {
+    setStatus('migrate', 'Download failed', 'badge-red');
+  }
+}
+
+function handleFileUpload(input, editorId) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => editors[editorId].setValue(e.target.result);
+  reader.readAsText(file);
+}
+
+let uploadedFiles = [];
+function handleMultiFileUpload(input) {
+  uploadedFiles = Array.from(input.files);
+  const fileList = document.getElementById('migrate-files');
+  if (uploadedFiles.length > 0) {
+    fileList.classList.remove('hidden');
+    fileList.innerHTML = uploadedFiles.map((f, i) =>
+      `<span class="file-chip">${f.name} <span class="remove" onclick="removeFile(${i})">&times;</span></span>`
+    ).join('');
+    // Read the first file into the editor
+    const reader = new FileReader();
+    reader.onload = e => editors['migrate-input'].setValue(e.target.result);
+    reader.readAsText(uploadedFiles[0]);
+  }
+}
+
+function removeFile(idx) {
+  uploadedFiles.splice(idx, 1);
+  handleMultiFileUpload({ files: uploadedFiles });
+  if (uploadedFiles.length === 0) document.getElementById('migrate-files').classList.add('hidden');
+}
+
+function setStatus(mode, text, cls) {
+  const el = document.getElementById(mode + '-status');
+  el.textContent = text;
+  el.className = 'status-item' + (cls ? ' ' + cls : '');
+}
+
+function showPanel(mode, title, body, type) {
+  const panel = document.getElementById(mode + '-panel');
+  document.getElementById(mode + '-panel-title').textContent = title;
+  const bodyEl = document.getElementById(mode + '-panel-body');
+  bodyEl.innerHTML = body;
+  panel.classList.remove('hidden');
+}
+
+function hidePanel(mode) {
+  document.getElementById(mode + '-panel').classList.add('hidden');
+}
+
+function renderWarnings(warnings) {
+  if (!warnings || warnings.length === 0) return '';
+  return warnings.map(w => `<div class="warn-item">${escapeHtml(w)}</div>`).join('');
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// --- Convert ---
+async function doConvert() {
+  const yaml = editors['convert-input'].getValue().trim();
+  if (!yaml) { setStatus('convert', 'Please paste or upload Ingress YAML'); return; }
+
+  setStatus('convert', 'Converting...');
+  document.getElementById('convert-btn').disabled = true;
+
+  try {
+    const resp = await fetch('/api/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml, sslRedirect: document.getElementById('opt-ssl').checked })
+    });
+    const data = await resp.json();
+
+    if (data.success) {
+      editors['convert-output'].setValue(data.output);
+      setStatus('convert', 'Converted successfully', 'badge-green');
+
+      if (data.warnings && data.warnings.length > 0) {
+        showPanel('convert', `Warnings (${data.warnings.length})`, renderWarnings(data.warnings));
+      } else {
+        hidePanel('convert');
+      }
+
+      // Parse summary stats
+      const stats = document.getElementById('convert-stats');
+      stats.classList.remove('hidden');
+      const ingressCount = (data.output.match(/kind: Ingress/g) || []).length;
+      const pluginCount = (data.output.match(/kind: ApisixPluginConfig/g) || []).length;
+      stats.innerHTML = `<span class="badge badge-blue">${ingressCount} Ingress</span>` +
+        (pluginCount > 0 ? ` <span class="badge badge-purple">${pluginCount} PluginConfig</span>` : '') +
+        (data.warnings && data.warnings.length > 0 ? ` <span class="badge badge-yellow">${data.warnings.length} warnings</span>` : '');
+    } else {
+      editors['convert-output'].setValue('');
+      setStatus('convert', 'Conversion failed', 'badge-red');
+      showPanel('convert', 'Errors', data.errors.map(e => `<div class="error-item">${escapeHtml(e)}</div>`).join(''));
+    }
+  } catch (err) {
+    setStatus('convert', 'Network error', 'badge-red');
+  } finally {
+    document.getElementById('convert-btn').disabled = false;
+  }
+}
+
+// --- Check ---
+async function doCheck() {
+  const yaml = editors['check-input'].getValue().trim();
+  if (!yaml) { setStatus('check', 'Please paste or upload Ingress YAML'); return; }
+
+  setStatus('check', 'Checking...');
+  document.getElementById('check-btn').disabled = true;
+
+  try {
+    const resp = await fetch('/api/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml })
+    });
+    const data = await resp.json();
+
+    const area = document.getElementById('check-report-area');
+    if (data.success) {
+      const total = data.converted + data.pluginConfig + data.customPlugin + data.manual + data.unknown;
+      const statusColor = s => {
+        if (s === 'CONVERTED') return 'badge-green';
+        if (s === 'PLUGIN_CONFIG') return 'badge-blue';
+        if (s === 'CUSTOM_PLUGIN') return 'badge-purple';
+        if (s === 'MANUAL') return 'badge-orange';
+        return 'badge-yellow';
+      };
+
+      // Build per-annotation table
+      let tableRows = '';
+      if (data.files && data.files.length > 0) {
+        for (const f of data.files) {
+          if (f.findings && f.findings.length > 0) {
+            tableRows += `<tr><td colspan="4" style="font-weight:600;color:var(--accent);background:var(--bg);padding:10px 12px;">${f.hasHelmTpl ? '&#128300; ' : ''}${escapeHtml(f.path)}${f.hasHelmTpl ? ' <span style="color:var(--text-muted);font-size:11px;">(Helm template)</span>' : ''}</td></tr>`;
+            for (const finding of f.findings) {
+              tableRows += `<tr>
+                <td><code>${escapeHtml(finding.annotation)}</code></td>
+                <td><span class="badge ${statusColor(finding.status)}">${finding.status}</span></td>
+                <td style="font-size:12px;color:var(--text-muted);">${escapeHtml(finding.detail)}</td>
+              </tr>`;
+            }
+          }
+        }
+      }
+
+      area.innerHTML = `
+        <div class="check-report">
+          <div style="font-weight:600;font-size:15px;margin-bottom:12px;">Migration Status</div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+            <div style="flex:1;min-width:120px;padding:10px;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);">
+              <div style="font-size:20px;font-weight:700;color:var(--green);">${data.converted}</div>
+              <div style="font-size:11px;color:var(--text-muted);">CONVERTED</div>
+            </div>
+            <div style="flex:1;min-width:120px;padding:10px;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);">
+              <div style="font-size:20px;font-weight:700;color:var(--accent);">${data.pluginConfig}</div>
+              <div style="font-size:11px;color:var(--text-muted);">PLUGIN_CONFIG</div>
+            </div>
+            <div style="flex:1;min-width:120px;padding:10px;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);">
+              <div style="font-size:20px;font-weight:700;color:var(--purple);">${data.customPlugin}</div>
+              <div style="font-size:11px;color:var(--text-muted);">CUSTOM_PLUGIN</div>
+            </div>
+            <div style="flex:1;min-width:120px;padding:10px;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);">
+              <div style="font-size:20px;font-weight:700;color:var(--orange);">${data.manual}</div>
+              <div style="font-size:11px;color:var(--text-muted);">MANUAL</div>
+            </div>
+            <div style="flex:1;min-width:120px;padding:10px;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);">
+              <div style="font-size:20px;font-weight:700;color:var(--yellow);">${data.unknown}</div>
+              <div style="font-size:11px;color:var(--text-muted);">UNKNOWN</div>
+            </div>
+          </div>
+          <div style="margin-bottom:6px;font-size:12px;color:var(--text-muted);">Scanned ${data.totalFiles} file(s), ${data.ingressFiles} Ingress file(s), ${total} annotation(s)</div>
+          ${data.hasManual || data.hasUnknown ? '<div style="margin-bottom:16px;padding:8px 12px;background:rgba(210,153,34,0.1);border:1px solid rgba(210,153,34,0.3);border-radius:var(--radius);font-size:13px;color:var(--yellow);">Some annotations need manual attention</div>' : '<div style="margin-bottom:16px;padding:8px 12px;background:rgba(63,185,80,0.1);border:1px solid rgba(63,185,80,0.3);border-radius:var(--radius);font-size:13px;color:var(--green);">All annotations can be automatically migrated!</div>'}
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr>
+              <th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;">Annotation</th>
+              <th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;">Status</th>
+              <th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;">Migration Guide</th>
+            </tr></thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>
+      `;
+
+      const stats = document.getElementById('check-stats');
+      stats.classList.remove('hidden');
+      stats.innerHTML =
+        `<span class="badge badge-green">${data.converted} converted</span>` +
+        `<span class="badge badge-blue">${data.pluginConfig + data.customPlugin} plugins</span>` +
+        (data.manual > 0 ? `<span class="badge badge-orange">${data.manual} manual</span>` : '') +
+        (data.unknown > 0 ? `<span class="badge badge-yellow">${data.unknown} unknown</span>` : '');
+
+      setStatus('check', 'Analysis complete', 'badge-green');
+      hidePanel('check');
+    } else {
+      area.innerHTML = '<div style="color:var(--red);text-align:center;padding-top:40px;">Failed to analyze</div>';
+      setStatus('check', 'Check failed', 'badge-red');
+    }
+  } catch (err) {
+    setStatus('check', 'Network error', 'badge-red');
+  } finally {
+    document.getElementById('check-btn').disabled = false;
+  }
+}
+
+// --- Migrate ---
+async function doMigrate() {
+  const yaml = editors['migrate-input'].getValue().trim();
+  if (!yaml) { setStatus('migrate', 'Please paste or upload Helm template YAML'); return; }
+
+  setStatus('migrate', 'Migrating...');
+  document.getElementById('migrate-btn').disabled = true;
+
+  try {
+    const resp = await fetch('/api/migrate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml })
+    });
+    const data = await resp.json();
+
+    if (data.success) {
+      editors['migrate-output'].setValue(data.output);
+      setStatus('migrate', 'Migration complete', 'badge-green');
+
+      const stats = document.getElementById('migrate-stats');
+      stats.classList.remove('hidden');
+      if (data.warnings && data.warnings.length > 0) {
+        stats.innerHTML = `<span class="badge badge-yellow">${data.warnings.length} warnings</span>`;
+        showPanel('migrate', 'Migration Report', `<pre style="white-space:pre-wrap;font-size:12px;">${escapeHtml(data.report)}</pre>\n${renderWarnings(data.warnings)}`);
+      } else {
+        stats.innerHTML = '<span class="badge badge-green">clean</span>';
+        showPanel('migrate', 'Migration Report', `<pre style="white-space:pre-wrap;font-size:12px;">${escapeHtml(data.report)}</pre>`);
+      }
+    } else {
+      editors['migrate-output'].setValue('');
+      setStatus('migrate', 'Migration failed', 'badge-red');
+      showPanel('migrate', 'Error', `<div class="error-item">${escapeHtml(data.report || 'Unknown error')}</div>`);
+    }
+  } catch (err) {
+    setStatus('migrate', 'Network error', 'badge-red');
+  } finally {
+    document.getElementById('migrate-btn').disabled = false;
+  }
+}
+
+// --- Docs ---
+let currentDoc = 'migration';
+let docCache = {};
+
+async function loadDoc(name) {
+  clearSearchHighlights();
+  searchMatches = [];
+  searchIdx = -1;
+  document.getElementById('doc-search-input').value = '';
+  document.getElementById('doc-search-count').textContent = '';
+  currentDoc = name;
+  document.getElementById('doc-btn-migration').classList.toggle('active', name === 'migration');
+  document.getElementById('doc-btn-webui').classList.toggle('active', name === 'webui');
+  document.getElementById('doc-btn-usage').classList.toggle('active', name === 'usage');
+  document.getElementById('doc-btn-annotations').classList.toggle('active', name === 'annotations');
+
+  // Update hash: #docs/<name> or #docs/<name>/<section>
+  const currentHash = location.hash;
+  let section = '';
+  const m = currentHash.match(/^#docs\/([^/]+)\/(.+)$/);
+  if (m && m[1] === name) section = m[2];
+  history.replaceState(null, '', section ? `#docs/${name}/${section}` : `#docs/${name}`);
+
+  const body = document.getElementById('docs-body');
+  const toc = document.getElementById('docs-toc');
+
+  // Check cache
+  if (!docCache[name]) {
+    try {
+      const resp = await fetch('/api/docs/' + name);
+      if (!resp.ok) throw new Error('Not found');
+      docCache[name] = await resp.text();
+    } catch (e) {
+      body.innerHTML = '<div style="color:var(--red);padding:20px;">Failed to load document</div>';
+      return;
+    }
+  }
+
+  const md = docCache[name];
+  const html = renderMarkdown(md);
+  body.innerHTML = html;
+
+  // Build TOC
+  const headings = body.querySelectorAll('h1, h2, h3');
+  let tocHtml = '<div class="docs-search"><input type="text" id="docs-search" placeholder="Filter sections..." oninput="filterDocs(this.value)"></div>';
+  headings.forEach((h, i) => {
+    const slug = slugify(h.textContent);
+    const id = 'section-' + slug;
+    h.id = id;
+    const level = h.tagName === 'H1' ? 0 : h.tagName === 'H2' ? 1 : 2;
+    const pad = level * 12;
+    tocHtml += `<div class="docs-sidebar-item" style="padding-left:${16+pad}px" onclick="scrollToDoc('${id}')" data-text="${h.textContent.toLowerCase()}">${h.textContent}</div>`;
+  });
+  toc.innerHTML = tocHtml;
+
+  body.scrollTop = 0;
+}
+
+function scrollToDoc(id) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Update hash with section
+    const slug = id.replace('section-', '');
+    history.replaceState(null, '', `#docs/${currentDoc}/${slug}`);
+  }
+}
+
+function slugify(text) {
+  return text.toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function filterDocs(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.docs-sidebar-item:not(.docs-search)').forEach(item => {
+    const text = item.dataset.text || '';
+    item.style.display = !q || text.includes(q) ? '' : 'none';
+  });
+}
+
+// --- Document content search with highlight ---
+let searchMatches = [];
+let searchIdx = -1;
+
+function searchDocContent(q) {
+  clearSearchHighlights();
+  searchMatches = [];
+  searchIdx = -1;
+  const countEl = document.getElementById('doc-search-count');
+  const prevBtn = document.getElementById('doc-search-prev');
+  const nextBtn = document.getElementById('doc-search-next');
+
+  if (!q || q.length < 2) {
+    countEl.textContent = '';
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    return;
+  }
+
+  const body = document.getElementById('docs-body');
+  // Walk text nodes and wrap matches
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null);
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  textNodes.forEach(node => {
+    const text = node.textContent;
+    const lower = text.toLowerCase();
+    let idx = lower.indexOf(q.toLowerCase());
+    if (idx === -1) return;
+
+    const frag = document.createDocumentFragment();
+    let lastIdx = 0;
+    while (idx !== -1) {
+      // Text before match
+      if (idx > lastIdx) frag.appendChild(document.createTextNode(text.slice(lastIdx, idx)));
+      // Highlighted match
+      const mark = document.createElement('mark');
+      mark.className = 'search-highlight';
+      mark.textContent = text.slice(idx, idx + q.length);
+      frag.appendChild(mark);
+      searchMatches.push(mark);
+      lastIdx = idx + q.length;
+      idx = lower.indexOf(q.toLowerCase(), lastIdx);
+    }
+    if (lastIdx < text.length) frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+    node.parentNode.replaceChild(frag, node);
+  });
+
+  countEl.textContent = searchMatches.length > 0 ? `${searchMatches.length} found` : 'No results';
+  prevBtn.disabled = searchMatches.length === 0;
+  nextBtn.disabled = searchMatches.length === 0;
+
+  if (searchMatches.length > 0) {
+    searchIdx = 0;
+    scrollToMatch(0);
+  }
+}
+
+function searchDocNav(dir) {
+  if (searchMatches.length === 0) return;
+  searchIdx = (searchIdx + dir + searchMatches.length) % searchMatches.length;
+  scrollToMatch(searchIdx);
+}
+
+function scrollToMatch(idx) {
+  searchMatches.forEach((m, i) => {
+    m.style.background = i === idx ? '#db6d28' : '#58a6ff55';
+    m.style.color = i === idx ? '#fff' : '';
+  });
+  searchMatches[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  document.getElementById('doc-search-count').textContent = `${idx + 1} / ${searchMatches.length}`;
+}
+
+function clearSearchHighlights() {
+  searchMatches.forEach(m => {
+    const text = document.createTextNode(m.textContent);
+    m.parentNode.replaceChild(text, m);
+  });
+  // Normalize merged text nodes
+  const body = document.getElementById('docs-body');
+  if (body) body.normalize();
+  searchMatches = [];
+}
+
+// --- Feedback ---
+let feedbackPage = 1;
+const feedbackPageSize = 15;
+
+const categoryLabels = {
+  'tool': 'Tool Issues',
+  'doc': 'Doc Issues',
+  'feature': 'Feature Requests',
+  'general': 'Other'
+};
+const categoryBadges = {
+  'tool': 'badge-red',
+  'doc': 'badge-blue',
+  'feature': 'badge-green',
+  'general': 'badge-yellow'
+};
+
+async function submitFeedback() {
+  const category = document.getElementById('fb-category').value;
+  const title = document.getElementById('fb-title').value.trim();
+  const content = document.getElementById('fb-content').value.trim();
+  const contact = document.getElementById('fb-contact').value.trim();
+
+  if (!title) { document.getElementById('fb-title').focus(); return; }
+  if (!content) { document.getElementById('fb-content').focus(); return; }
+
+  try {
+    const resp = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, title, content, contact })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      document.getElementById('fb-title').value = '';
+      document.getElementById('fb-content').value = '';
+      document.getElementById('fb-contact').value = '';
+      feedbackPage = 1;
+      loadFeedback(feedbackPage);
+    }
+  } catch (err) {
+    // silent
+  }
+}
+
+async function loadFeedback(page) {
+  feedbackPage = page || 1;
+  const listEl = document.getElementById('fb-list');
+  const paginationEl = document.getElementById('fb-pagination');
+  const totalEl = document.getElementById('fb-total');
+
+  try {
+    const resp = await fetch(`/api/feedback?page=${feedbackPage}&pageSize=${feedbackPageSize}`);
+    const data = await resp.json();
+
+    if (!data.success || !data.data || data.data.length === 0) {
+      listEl.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px 0;">No messages yet. Be the first to leave feedback!</div>';
+      paginationEl.innerHTML = '';
+      totalEl.textContent = data.total ? `${data.total} total` : '';
+      return;
+    }
+
+    totalEl.textContent = `${data.total} total`;
+
+    listEl.innerHTML = data.data.map(fb => `
+      <div class="feedback-card">
+        <div class="feedback-card-header">
+          <span class="feedback-card-title">${escapeHtml(fb.title)}</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="badge ${categoryBadges[fb.category] || 'badge-yellow'}">${categoryLabels[fb.category] || fb.category}</span>
+            <button class="feedback-delete-btn" onclick="deleteFeedback(${fb.id})" title="Delete">&#10005;</button>
+          </div>
+        </div>
+        <div class="feedback-card-body">${escapeHtml(fb.content)}</div>
+        <div class="feedback-card-meta">
+          ${fb.contact ? '<span>&#9993; ' + escapeHtml(fb.contact) + '</span>' : ''}
+          <span>&#128337; ${fb.created_at}</span>
+        </div>
+      </div>
+    `).join('');
+
+    // Pagination
+    const totalPages = Math.ceil(data.total / feedbackPageSize);
+    if (totalPages <= 1) {
+      paginationEl.innerHTML = '';
+      return;
+    }
+
+    let pHtml = '';
+    pHtml += `<button class="fb-pagination-btn" onclick="loadFeedback(${feedbackPage - 1})" ${feedbackPage <= 1 ? 'disabled' : ''}>&#9664; Prev</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+      if (totalPages > 7 && Math.abs(i - feedbackPage) > 2 && i !== 1 && i !== totalPages) {
+        if (i === feedbackPage - 3 || i === feedbackPage + 3) pHtml += '<span style="color:var(--text-muted);">...</span>';
+        continue;
+      }
+      pHtml += `<button class="fb-pagination-btn ${i === feedbackPage ? 'active' : ''}" onclick="loadFeedback(${i})">${i}</button>`;
+    }
+    pHtml += `<button class="fb-pagination-btn" onclick="loadFeedback(${feedbackPage + 1})" ${feedbackPage >= totalPages ? 'disabled' : ''}>Next &#9654;</button>`;
+    paginationEl.innerHTML = pHtml;
+  } catch (err) {
+    listEl.innerHTML = '<div style="color:var(--red);text-align:center;padding:40px 0;">Failed to load feedback</div>';
+  }
+}
+
+async function deleteFeedback(id) {
+  try {
+    const resp = await fetch(`/api/feedback?id=${id}`, { method: 'DELETE' });
+    const data = await resp.json();
+    if (data.success) {
+      loadFeedback(feedbackPage);
+    }
+  } catch (err) {
+    // silent
+  }
+}
+
+function renderMarkdown(md) {
+  let html = md;
+  const placeholders = [];
+  const protect = (s) => { const i = placeholders.length; placeholders.push(s); return '\x00PH' + i + '\x00'; };
+
+  // Code blocks — protect first so # inside them is safe
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    return protect('<pre><code>' + escapeHtml(code.replace(/\n$/, '')) + '</code></pre>');
+  });
+  // Inline code — protect before headings/tables
+  html = html.replace(/`([^`]+)`/g, (_, code) => {
+    return protect('<code>' + escapeHtml(code) + '</code>');
+  });
+  // Tables
+  html = html.replace(/^(\|.+\|)\n(\|[\s:|-]+\|)\n((?:\|.+\|\n?)*)/gm, (_, header, sep, rows) => {
+    const ths = header.split('|').filter(c => c.trim()).map(c => '<th>' + c.trim() + '</th>').join('');
+    const trs = rows.trim().split('\n').map(row => {
+      const tds = row.split('|').filter(c => c.trim()).map(c => '<td>' + c.trim() + '</td>').join('');
+      return '<tr>' + tds + '</tr>';
+    }).join('');
+    return protect('<table><thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>');
+  });
+  // Headers
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Blockquote
+  html = html.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
+  // HR
+  html = html.replace(/^---$/gm, '<hr>');
+  // Bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  // Line breaks (paragraphs)
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  html = '<p>' + html + '</p>';
+  // Clean up empty paragraphs
+  html = html.replace(/<p>\s*<\/p>/g, '');
+  html = html.replace(/<p>\s*(<h[1-4]>)/g, '$1');
+  html = html.replace(/(<\/h[1-4]>)\s*<\/p>/g, '$1');
+  html = html.replace(/<p>\s*(<hr>)\s*<\/p>/g, '$1');
+  // Restore protected blocks (loop for nested placeholders)
+  for (let pass = 0; pass < 5; pass++) {
+    const before = html;
+    html = html.replace(/\x00PH(\d+)\x00/g, (_, i) => placeholders[parseInt(i)]);
+    if (html === before) break;
+  }
+  return html;
+}
+
+// --- Announcement functions ---
+async function loadActiveAnnouncements() {
+  try {
+    const resp = await fetch('/api/announcements');
+    const data = await resp.json();
+    if (!data.success || !data.data || data.data.length === 0) return;
+    const bar = document.getElementById('announcement-bar');
+    const container = document.getElementById('announcement-content');
+    const levelColors = { info: 'var(--accent)', warn: '#d29922', fix: 'var(--green)' };
+    const levelLabels = { info: 'INFO', warn: 'WARN', fix: 'FIX' };
+    container.innerHTML = data.data.map(a =>
+      `<span style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;">` +
+      `<span style="background:${levelColors[a.level] || levelColors.info};color:#fff;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600;">${levelLabels[a.level] || 'INFO'}</span>` +
+      `<span>${a.content}</span></span>`
+    ).join('');
+    bar.style.display = 'flex';
+  } catch (e) { /* ignore */ }
+}
+
+async function loadAnnouncements(showAll) {
+  try {
+    const resp = await fetch('/api/announcements' + (showAll ? '?all=true' : ''));
+    const data = await resp.json();
+    if (!data.success) return;
+    const list = data.data || [];
+    const levelColors = { info: 'var(--accent)', warn: '#d29922', fix: 'var(--green)' };
+    const levelLabels = { info: 'Info', warn: 'Warning', fix: 'Fix' };
+    const container = document.getElementById('admin-ann-list');
+    if (list.length === 0) {
+      container.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);">No announcements yet</div>';
+      return;
+    }
+    container.innerHTML = list.map(a =>
+      `<div style="padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:12px;background:${a.active ? 'var(--bg-card)' : 'rgba(139,148,158,0.05)'};">` +
+      `<span style="background:${levelColors[a.level]};color:#fff;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600;flex-shrink:0;margin-top:2px;">${levelLabels[a.level]}</span>` +
+      `<div style="flex:1;">` +
+      `<div style="font-size:14px;color:${a.active ? 'var(--text)' : 'var(--text-muted)'};margin-bottom:4px;">${a.title}</div>` +
+      `<div style="font-size:12px;color:var(--text-muted);line-height:1.5;">${a.content}</div>` +
+      `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${a.created_at} &middot; ${a.active ? '<span style="color:var(--green);">Active</span>' : '<span style="color:var(--text-muted);">Hidden</span>'}</div>` +
+      `</div>` +
+      `<div style="display:flex;gap:4px;flex-shrink:0;">` +
+      `<button class="btn btn-sm" onclick="editAnnouncement(${a.id})">Edit</button>` +
+      `<button class="btn btn-sm" style="color:var(--red);" onclick="deleteAnnouncement(${a.id})">Delete</button>` +
+      `</div></div>`
+    ).join('');
+  } catch (e) { document.getElementById('admin-ann-list').innerHTML = '<div style="padding:12px;color:var(--red);">Failed to load</div>'; }
+}
+
+function showAnnouncementForm() {
+  document.getElementById('ann-edit-id').value = '0';
+  document.getElementById('ann-level').value = 'info';
+  document.getElementById('ann-title').value = '';
+  document.getElementById('ann-content-input').value = '';
+  document.getElementById('ann-active').checked = true;
+  document.getElementById('admin-ann-form').style.display = '';
+}
+
+function hideAnnouncementForm() {
+  document.getElementById('admin-ann-form').style.display = 'none';
+}
+
+function editAnnouncement(id) {
+  fetch('/api/announcements?all=true')
+    .then(r => r.json())
+    .then(data => {
+      const a = (data.data || []).find(x => x.id === id);
+      if (!a) return;
+      document.getElementById('ann-edit-id').value = a.id;
+      document.getElementById('ann-level').value = a.level;
+      document.getElementById('ann-title').value = a.title;
+      document.getElementById('ann-content-input').value = a.content;
+      document.getElementById('ann-active').checked = a.active;
+      document.getElementById('admin-ann-form').style.display = '';
+    });
+}
+
+async function saveAnnouncement() {
+  const id = parseInt(document.getElementById('ann-edit-id').value);
+  const payload = {
+    id: id,
+    level: document.getElementById('ann-level').value,
+    title: document.getElementById('ann-title').value,
+    content: document.getElementById('ann-content-input').value,
+    active: document.getElementById('ann-active').checked
+  };
+  if (!payload.title || !payload.content) { alert('Title and content required'); return; }
+  try {
+    await fetch('/api/announcements', {
+      method: id ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    hideAnnouncementForm();
+    loadAnnouncements(true);
+    loadActiveAnnouncements();
+  } catch (e) { alert('Save failed'); }
+}
+
+async function deleteAnnouncement(id) {
+  if (!confirm('Delete this announcement?')) return;
+  await fetch('/api/announcements?id=' + id, { method: 'DELETE' });
+  loadAnnouncements(true);
+  loadActiveAnnouncements();
+}
+
+// --- Init ---
+document.addEventListener('DOMContentLoaded', () => {
+  initEditors();
+
+  // Parse hash on load
+  const hash = location.hash.slice(1); // remove #
+  if (hash.startsWith('docs/')) {
+    const parts = hash.split('/');
+    const docName = parts[1] || 'migration';
+    const sectionSlug = parts[2] || '';
+    switchTab('docs', false);
+    loadDoc(docName).then(() => {
+      if (sectionSlug) {
+        const el = document.getElementById('section-' + sectionSlug);
+        if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' });
+      }
+    });
+  } else if (['convert', 'check', 'migrate', 'feedback', 'admin'].includes(hash)) {
+    switchTab(hash, false);
+    if (hash === 'feedback') loadFeedback(1);
+  }
+
+  // Load active announcements on page load
+  loadActiveAnnouncements();
+
+  // Auto-load docs when Docs tab is first opened via click
+  document.querySelector('[data-tab="docs"]').addEventListener('click', () => {
+    if (!docCache['migration']) loadDoc('migration');
+  }, { once: true });
+
+  // Auto-load feedback when Feedback tab is opened
+  document.querySelector('[data-tab="feedback"]').addEventListener('click', () => {
+    loadFeedback(1);
+  });
+
+});
+</script>
+</body>
+</html>

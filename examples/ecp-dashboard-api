@@ -1,0 +1,2308 @@
+apiVersion: v1
+items:
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"ceph","meta.helm.sh/release-namespace":"ceph","nginx.ingress.kubernetes.io/proxy-body-size":"100G"},"creationTimestamp":"2025-05-23T10:04:06Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"ceph-rgw-ingress","namespace":"ceph","resourceVersion":"1418974","uid":"a1132028-2b7a-47ec-a517-1e9ee9b95b5f"},"spec":{"rules":[{"host":"ceph-rgw-ingress","http":{"paths":[{"backend":{"service":{"name":"ceph-rgw","port":{"number":8088}}},"path":"/","pathType":"Prefix"}]}},{"host":"ceph-rgw-ingress.ceph","http":{"paths":[{"backend":{"service":{"name":"ceph-rgw","port":{"number":8088}}},"path":"/","pathType":"Prefix"}]}},{"host":"ceph-rgw-ingress.ceph.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"ceph-rgw","port":{"number":8088}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: ceph
+      meta.helm.sh/release-namespace: ceph
+      nginx.ingress.kubernetes.io/proxy-body-size: 100G
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: ceph-rgw-ingress
+    namespace: ceph
+    resourceVersion: "1507705"
+    uid: dbdd9e85-f770-4cb2-8884-4b2701364348
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: ceph-rgw-ingress
+      http:
+        paths:
+        - backend:
+            service:
+              name: ceph-rgw
+              port:
+                number: 8088
+          path: /
+          pathType: Prefix
+    - host: ceph-rgw-ingress.ceph
+      http:
+        paths:
+        - backend:
+            service:
+              name: ceph-rgw
+              port:
+                number: 8088
+          path: /
+          pathType: Prefix
+    - host: ceph-rgw-ingress.ceph.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: ceph-rgw
+              port:
+                number: 8088
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/proxy-redirect-from: http://
+      ingress.kubernetes.io/proxy-redirect-to: https://
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/proxy-redirect-from":"http://","ingress.kubernetes.io/proxy-redirect-to":"https://","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"ems-dashboard","meta.helm.sh/release-namespace":"ems"},"creationTimestamp":"2025-05-23T10:04:28Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"ecp-dashboard","namespace":"ems","resourceVersion":"1418486","uid":"3b1edeeb-55ee-484f-8f4f-75536b2f10c3"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"ecp-dashboard-int","port":{"name":"ecp-front-port"}}},"path":"/","pathType":"Prefix"}]}}],"tls":[{"hosts":["ecp-dashboard","ecp-dashboard.ems","ecp-dashboard.ems.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: ems-dashboard
+      meta.helm.sh/release-namespace: ems
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 3
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: ecp-dashboard
+    namespace: ems
+    resourceVersion: "1507706"
+    uid: 447d0255-f684-4a21-bc16-c762a8ecbd02
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: ecp-dashboard-int
+              port:
+                name: ecp-front-port
+          path: /
+          pathType: Prefix
+    tls:
+    - hosts:
+      - ecp-dashboard
+      - ecp-dashboard.ems
+      - ecp-dashboard.ems.svc.cluster.local
+      secretName: dashboard-cert
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/force-ssl-redirect: "true"
+      ingress.kubernetes.io/proxy-cookie-path: / "/; secure; SameSite=None"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/force-ssl-redirect":"true","ingress.kubernetes.io/proxy-cookie-path":"/ \"/; secure; SameSite=None\"","meta.helm.sh/release-name":"ems-dashboard","meta.helm.sh/release-namespace":"ems","nginx.ingress.kubernetes.io/auth-response-headers":"Authorization","nginx.ingress.kubernetes.io/auth-url":"http://oath-gateway.ems.svc.cluster.local/decisions$request_uri"},"creationTimestamp":"2025-05-23T10:04:27Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"ecp-dashboard-api","namespace":"ems","resourceVersion":"1418480","uid":"5311a93c-b38e-4c6d-bdd6-9ffda13116c2"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"ecp-dashboard-api-int","port":{"name":"ecp-api-port"}}},"path":"/ecp-dashboard-api/api","pathType":"Prefix"},{"backend":{"service":{"name":"ecp-dashboard-api-int","port":{"name":"ecp-api-port"}}},"path":"/apis/ecp","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: ems-dashboard
+      meta.helm.sh/release-namespace: ems
+      nginx.ingress.kubernetes.io/auth-response-headers: Authorization
+      nginx.ingress.kubernetes.io/auth-url: http://oath-gateway.ems.svc.cluster.local/decisions$request_uri
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: ecp-dashboard-api
+    namespace: ems
+    resourceVersion: "1507707"
+    uid: 46354a37-576f-4494-b31c-23ef87b32d40
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: ecp-dashboard-api-int
+              port:
+                name: ecp-api-port
+          path: /ecp-dashboard-api/api
+          pathType: Prefix
+        - backend:
+            service:
+              name: ecp-dashboard-api-int
+              port:
+                name: ecp-api-port
+          path: /apis/ecp
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/force-ssl-redirect: "true"
+      ingress.kubernetes.io/proxy-cookie-path: / "/; secure; SameSite=None"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/force-ssl-redirect":"true","ingress.kubernetes.io/proxy-cookie-path":"/ \"/; secure; SameSite=None\"","meta.helm.sh/release-name":"ems-dashboard","meta.helm.sh/release-namespace":"ems"},"creationTimestamp":"2025-05-23T10:04:28Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"ecp-dashboard-proxy","namespace":"ems","resourceVersion":"1418512","uid":"a87b5160-3ef7-43dc-8007-530bea0d283c"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"ecp-dashboard-api-int","port":{"name":"ecp-api-port"}}},"path":"/ecp-dashboard-api/proxy","pathType":"Prefix"},{"backend":{"service":{"name":"ecp-dashboard-api-int","port":{"name":"ecp-api-port"}}},"path":"/apis/ecp/v1/platform/configs","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: ems-dashboard
+      meta.helm.sh/release-namespace: ems
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: ecp-dashboard-proxy
+    namespace: ems
+    resourceVersion: "1507708"
+    uid: 40e43c8d-9d16-47f6-b681-8f1f91a4dafb
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: ecp-dashboard-api-int
+              port:
+                name: ecp-api-port
+          path: /ecp-dashboard-api/proxy
+          pathType: Prefix
+        - backend:
+            service:
+              name: ecp-dashboard-api-int
+              port:
+                name: ecp-api-port
+          path: /apis/ecp/v1/platform/configs
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/force-ssl-redirect: "true"
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/proxy-cookie-path: / "/; secure; SameSite=None"
+      # ingress.kubernetes.io/proxy-redirect-from: http://
+      # ingress.kubernetes.io/proxy-redirect-to: https://
+      ingress.kubernetes.io/session-cookie-name: escookie
+      k8s.apisix.apache.org/http-to-https: "true"
+      meta.helm.sh/release-name: ems-dashboard
+      meta.helm.sh/release-namespace: ems
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: ems-dashboard-api
+    namespace: ems
+    resourceVersion: "1507709"
+    uid: c1d69f5d-d1a8-481b-bc3b-fec0f2b3ad2e
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/api/oem/query
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/auth
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/auth_login
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/register
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/forgot_password
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/api/security/password_strength
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/captcha
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/api/language
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/api/user_session
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/api/service_providers/tokens
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/api/kubeapps/ota_release_status/multi-region
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/api/platform/identity
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/api/menu/left_nav/multi-region
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/api/menu/left_nav/iam
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/api/componententity
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/api/register/invite_emails
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api/switch_cloud
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /ems_dashboard_api
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /auth_login
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /auth/logout
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /auth/websso
+          pathType: Prefix
+        - backend:
+            service:
+              name: ems-dashboard-api-int
+              port:
+                name: ems-api-port
+          path: /auth/saml2.0
+          pathType: Prefix
+    tls:
+    - hosts:
+      - ems-dashboard-api
+      - ems-dashboard-api.ems
+      - ems-dashboard-api.ems.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"peak","meta.helm.sh/release-namespace":"ems"},"creationTimestamp":"2025-05-23T10:05:44Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"peak","namespace":"ems","resourceVersion":"1418944","uid":"93f02b64-81a9-4a5f-b843-d08dce4f6e02"},"spec":{"rules":[{"host":"peak","http":{"paths":[{"backend":{"service":{"name":"peak-api","port":{"name":"mu-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"peak.ems","http":{"paths":[{"backend":{"service":{"name":"peak-api","port":{"name":"mu-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"peak.ems.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"peak-api","port":{"name":"mu-api"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: peak
+      meta.helm.sh/release-namespace: ems
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: peak
+    namespace: ems
+    resourceVersion: "1507711"
+    uid: 252c026e-13d5-49f7-b9ab-53392dadade0
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: peak
+      http:
+        paths:
+        - backend:
+            service:
+              name: peak-api
+              port:
+                name: mu-api
+          path: /
+          pathType: Prefix
+    - host: peak.ems
+      http:
+        paths:
+        - backend:
+            service:
+              name: peak-api
+              port:
+                name: mu-api
+          path: /
+          pathType: Prefix
+    - host: peak.ems.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: peak-api
+              port:
+                name: mu-api
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-cookie-path: / "/; secure; SameSite=None"
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-cookie-path":"/ \"/; secure; SameSite=None\"","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"iam","meta.helm.sh/release-namespace":"iam","nginx.ingress.kubernetes.io/rewrite-target":"/$2"},"creationTimestamp":"2025-05-23T10:17:45Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"hydra","namespace":"iam","resourceVersion":"1418953","uid":"ddf8bd26-7d7f-46b0-b7c3-64cd52ca9f29"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"iam-hydra","port":{"name":"public-port"}}},"path":"/oauth2(/|$)(.*)","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: iam
+      meta.helm.sh/release-namespace: iam
+      nginx.ingress.kubernetes.io/rewrite-target: /$2
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: hydra
+    namespace: iam
+    resourceVersion: "1507712"
+    uid: 15c766e9-58af-4544-9e29-dd60bcf96c03
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: iam-hydra
+              port:
+                name: public-port
+          path: /oauth2(/|$)(.*)
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-cookie-path: / "/; secure; SameSite=None"
+      ingress.kubernetes.io/session-cookie-name: escookie
+      meta.helm.sh/release-name: iam
+      meta.helm.sh/release-namespace: iam
+      k8s.apisix.apache.org/auth-uri: http://oath-gateway.ems.svc.cluster.local/decisions$request_uri
+      k8s.apisix.apache.org/auth-upstream-headers:: Authorization
+      k8s.apisix.apache.org/auth-request-headers: "User-Agent"
+      nginx.ingress.kubernetes.io/configuration-snippet: more_set_headers "X-Forwarded-For
+        $http_x_forwarded_for";
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: iam-api
+    namespace: iam
+    resourceVersion: "1507713"
+    uid: c9b56445-6d87-4b84-b3c2-0ef0c456757a
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: iam-api-int
+              port:
+                name: iam-api-port
+          path: /apis/iam
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-cookie-path: / "/; secure; SameSite=None"
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-cookie-path":"/ \"/; secure; SameSite=None\"","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"iam","meta.helm.sh/release-namespace":"iam","nginx.ingress.kubernetes.io/configuration-snippet":"more_set_headers \"X-Forwarded-For $http_x_forwarded_for\";"},"creationTimestamp":"2025-05-23T10:17:48Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"iam-api-white-route","namespace":"iam","resourceVersion":"1418964","uid":"af627f8a-7849-4f71-96dd-8a5de9638912"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"iam-api-int","port":{"name":"iam-api-port"}}},"path":"/apis/iam/anonymous","pathType":"Prefix"},{"backend":{"service":{"name":"iam-api-int","port":{"name":"iam-api-port"}}},"path":"/iam_api/statics","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: iam
+      meta.helm.sh/release-namespace: iam
+      nginx.ingress.kubernetes.io/configuration-snippet: more_set_headers "X-Forwarded-For
+        $http_x_forwarded_for";
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: iam-api-white-route
+    namespace: iam
+    resourceVersion: "1507714"
+    uid: 21142915-00d4-45b7-9995-ca05a9df78e8
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: iam-api-int
+              port:
+                name: iam-api-port
+          path: /apis/iam/anonymous
+          pathType: Prefix
+        - backend:
+            service:
+              name: iam-api-int
+              port:
+                name: iam-api-port
+          path: /iam_api/statics
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/iam/(.*) /$1 break;
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/configuration-snippet":"rewrite ^/iam/(.*) /$1 break;\n","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"iam","meta.helm.sh/release-namespace":"iam"},"creationTimestamp":"2025-05-23T10:17:45Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"iam-dashboard","namespace":"iam","resourceVersion":"1418961","uid":"35decac8-5602-4d59-9c00-5392cd8dbb52"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"iam-dashboard-int","port":{"name":"iam-front-port"}}},"path":"/iam","pathType":"Prefix"}]}}],"tls":[{"hosts":["iam-dashboard","iam-dashboard.iam","iam-dashboard.iam.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: iam
+      meta.helm.sh/release-namespace: iam
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: iam-dashboard
+    namespace: iam
+    resourceVersion: "1507715"
+    uid: e37a596a-4173-4172-bc78-b38acca848e3
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: iam-dashboard-int
+              port:
+                name: iam-front-port
+          path: /iam
+          pathType: Prefix
+    tls:
+    - hosts:
+      - iam-dashboard
+      - iam-dashboard.iam
+      - iam-dashboard.iam.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"ceilometer","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:21:56Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"aodh","namespace":"openstack","resourceVersion":"1418534","uid":"a7ff5076-28cc-4ad9-ad77-5b86127c3f4b"},"spec":{"rules":[{"host":"aodh","http":{"paths":[{"backend":{"service":{"name":"aodh-api","port":{"name":"aodh-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"aodh.openstack","http":{"paths":[{"backend":{"service":{"name":"aodh-api","port":{"name":"aodh-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"aodh.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"aodh-api","port":{"name":"aodh-api"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: ceilometer
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: aodh
+    namespace: openstack
+    resourceVersion: "1507716"
+    uid: 86eed77e-d46f-4d58-a83d-fd29e7ecdcbd
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: aodh
+      http:
+        paths:
+        - backend:
+            service:
+              name: aodh-api
+              port:
+                name: aodh-api
+          path: /
+          pathType: Prefix
+    - host: aodh.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: aodh-api
+              port:
+                name: aodh-api
+          path: /
+          pathType: Prefix
+    - host: aodh.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: aodh-api
+              port:
+                name: aodh-api
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"ceilometer","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:21:57Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"ceilometer","namespace":"openstack","resourceVersion":"1418549","uid":"eb84f63f-c715-48d3-a17b-68806161d0a4"},"spec":{"rules":[{"host":"ceilometer","http":{"paths":[{"backend":{"service":{"name":"ceilometer-api","port":{"name":"ce-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"ceilometer.openstack","http":{"paths":[{"backend":{"service":{"name":"ceilometer-api","port":{"name":"ce-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"ceilometer.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"ceilometer-api","port":{"name":"ce-api"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: ceilometer
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: ceilometer
+    namespace: openstack
+    resourceVersion: "1507719"
+    uid: 0727f0a5-b9dc-4756-a527-7df303f4673e
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: ceilometer
+      http:
+        paths:
+        - backend:
+            service:
+              name: ceilometer-api
+              port:
+                name: ce-api
+          path: /
+          pathType: Prefix
+    - host: ceilometer.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: ceilometer-api
+              port:
+                name: ce-api
+          path: /
+          pathType: Prefix
+    - host: ceilometer.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: ceilometer-api
+              port:
+                name: ce-api
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"cinder","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:20:56Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"cinder","namespace":"openstack","resourceVersion":"1418479","uid":"0685b779-27d3-4b3a-9a1b-ab0a5fe01358"},"spec":{"rules":[{"host":"cinder","http":{"paths":[{"backend":{"service":{"name":"cinder-api","port":{"name":"c-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"cinder.openstack","http":{"paths":[{"backend":{"service":{"name":"cinder-api","port":{"name":"c-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"cinder.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"cinder-api","port":{"name":"c-api"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: cinder
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: cinder
+    namespace: openstack
+    resourceVersion: "1507720"
+    uid: 35a76d5d-9e2e-4c7c-8702-bda4875c7d96
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: cinder
+      http:
+        paths:
+        - backend:
+            service:
+              name: cinder-api
+              port:
+                name: c-api
+          path: /
+          pathType: Prefix
+    - host: cinder.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: cinder-api
+              port:
+                name: c-api
+          path: /
+          pathType: Prefix
+    - host: cinder.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: cinder-api
+              port:
+                name: c-api
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/ebs/(.*) /$1 break;
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/configuration-snippet":"rewrite ^/ebs/(.*) /$1 break;\n","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"cinder","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:20:58Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"cinder-dashboard","namespace":"openstack","resourceVersion":"1418518","uid":"412792f7-c88c-4436-87b2-c540649008b3"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"cinder-dashboard-int","port":{"name":"sch-front-port"}}},"path":"/ebs","pathType":"Prefix"}]}}],"tls":[{"hosts":["cinder-dashboard","cinder-dashboard.openstack","cinder-dashboard.openstack.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: cinder
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: cinder-dashboard
+    namespace: openstack
+    resourceVersion: "1507722"
+    uid: 69ca0c94-e35f-4204-92ff-3b135010dabd
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: cinder-dashboard-int
+              port:
+                name: sch-front-port
+          path: /ebs
+          pathType: Prefix
+    tls:
+    - hosts:
+      - cinder-dashboard
+      - cinder-dashboard.openstack
+      - cinder-dashboard.openstack.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/cinder_dashboard_api/(.*) /$1 break;
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/configuration-snippet":"rewrite ^/cinder_dashboard_api/(.*) /$1 break;\n","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"cinder","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:20:57Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"cinder-dashboard-api","namespace":"openstack","resourceVersion":"1418490","uid":"9be693a4-e73d-4107-8cd1-769dd5052d5d"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"cinder-dashboard-api","port":{"name":"cinder-pub"}}},"path":"/cinder_dashboard_api","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: cinder
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: cinder-dashboard-api
+    namespace: openstack
+    resourceVersion: "1507723"
+    uid: 3083e8bd-81ff-49b0-9dce-180d8f577010
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: cinder-dashboard-api
+              port:
+                name: cinder-pub
+          path: /cinder_dashboard_api
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"coaster","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T10:27:35Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"coaster","namespace":"openstack","resourceVersion":"1418997","uid":"3e415d12-4f7c-464d-b48d-4d56303ea391"},"spec":{"rules":[{"host":"coaster","http":{"paths":[{"backend":{"service":{"name":"coaster-all","port":{"name":"coaster-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"coaster.openstack","http":{"paths":[{"backend":{"service":{"name":"coaster-all","port":{"name":"coaster-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"coaster.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"coaster-all","port":{"name":"coaster-api"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: coaster
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: coaster
+    namespace: openstack
+    resourceVersion: "1507725"
+    uid: fb2f349a-153b-4e04-acae-239058ac639c
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: coaster
+      http:
+        paths:
+        - backend:
+            service:
+              name: coaster-all
+              port:
+                name: coaster-api
+          path: /
+          pathType: Prefix
+    - host: coaster.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: coaster-all
+              port:
+                name: coaster-api
+          path: /
+          pathType: Prefix
+    - host: coaster.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: coaster-all
+              port:
+                name: coaster-api
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/configuration-snippet: |
+        limit_req_status 429;
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/configuration-snippet":"limit_req_status 429;\n","meta.helm.sh/release-name":"emla","meta.helm.sh/release-namespace":"openstack","nginx.ingress.kubernetes.io/limit-rps":"1000"},"creationTimestamp":"2025-05-23T10:17:10Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"emla","namespace":"openstack","resourceVersion":"1418942","uid":"3ec74c73-0052-463b-ab6d-12f413d06062"},"spec":{"rules":[{"host":"emla","http":{"paths":[{"backend":{"service":{"name":"emla-apiserver","port":{"name":"http"}}},"path":"/","pathType":"Prefix"}]}},{"host":"emla.openstack","http":{"paths":[{"backend":{"service":{"name":"emla-apiserver","port":{"name":"http"}}},"path":"/","pathType":"Prefix"}]}},{"host":"emla.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"emla-apiserver","port":{"name":"http"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: emla
+      meta.helm.sh/release-namespace: openstack
+      nginx.ingress.kubernetes.io/limit-rps: "1000"
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: emla
+    namespace: openstack
+    resourceVersion: "1507726"
+    uid: f6a62a17-c99b-49d1-be77-ac6d7f01efc0
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: emla
+      http:
+        paths:
+        - backend:
+            service:
+              name: emla-apiserver
+              port:
+                name: http
+          path: /
+          pathType: Prefix
+    - host: emla.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: emla-apiserver
+              port:
+                name: http
+          path: /
+          pathType: Prefix
+    - host: emla.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: emla-apiserver
+              port:
+                name: http
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/emla/(.*) /$1 break;
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: 1024M
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/configuration-snippet":"rewrite ^/emla/(.*) /$1 break;\n","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"1024M","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"grafana","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:19:57Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"emla-dashboard","namespace":"openstack","resourceVersion":"1418491","uid":"e159e6b0-a9ff-4e61-8bbd-08ec52a63d18"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"emla-dashboard-int","port":{"name":"sch-front-port"}}},"path":"/emla/","pathType":"Prefix"}]}}],"tls":[{"hosts":["emla-dashboard","emla-dashboard.openstack","emla-dashboard.openstack.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: grafana
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: emla-dashboard
+    namespace: openstack
+    resourceVersion: "1507729"
+    uid: 39673951-da54-4161-b917-c77d0df68dd1
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: emla-dashboard-int
+              port:
+                name: sch-front-port
+          path: /emla/
+          pathType: Prefix
+    tls:
+    - hosts:
+      - emla-dashboard
+      - emla-dashboard.openstack
+      - emla-dashboard.openstack.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/emla_dashboard_api/api/(.*) /apis/$1 break;
+        limit_req_status 429;
+      ingress.kubernetes.io/proxy-body-size: "0"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/configuration-snippet":"rewrite ^/emla_dashboard_api/api/(.*) /apis/$1 break;\nlimit_req_status 429;\n","ingress.kubernetes.io/proxy-body-size":"0","meta.helm.sh/release-name":"emla","meta.helm.sh/release-namespace":"openstack","nginx.ingress.kubernetes.io/affinity":"cookie","nginx.ingress.kubernetes.io/auth-response-headers":"Authorization","nginx.ingress.kubernetes.io/auth-url":"http://oath-gateway.ems.svc.cluster.local/decisions$request_uri","nginx.ingress.kubernetes.io/limit-rps":"1000","nginx.ingress.kubernetes.io/session-cookie-name":"escookie"},"creationTimestamp":"2025-05-23T10:17:10Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"emla-dashboard-api","namespace":"openstack","resourceVersion":"1418978","uid":"e9ff776d-0785-4b8a-b36a-9d4aba29c14f"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"emla-apiserver","port":{"name":"http"}}},"path":"/emla_dashboard_api","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: emla
+      meta.helm.sh/release-namespace: openstack
+      nginx.ingress.kubernetes.io/affinity: cookie
+      nginx.ingress.kubernetes.io/auth-response-headers: Authorization
+      nginx.ingress.kubernetes.io/auth-url: http://oath-gateway.ems.svc.cluster.local/decisions$request_uri
+      nginx.ingress.kubernetes.io/limit-rps: "1000"
+      nginx.ingress.kubernetes.io/session-cookie-name: escookie
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: emla-dashboard-api
+    namespace: openstack
+    resourceVersion: "1507732"
+    uid: f05ee70f-eb56-4b70-b447-bd6db9ccb432
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: emla-apiserver
+              port:
+                name: http
+          path: /emla_dashboard_api
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/hostha/(.*) /$1 break;
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/configuration-snippet":"rewrite ^/hostha/(.*) /$1 break;\n","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"estack-hagent","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T10:17:54Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"estack-hagent-dashboard","namespace":"openstack","resourceVersion":"1418985","uid":"355e4863-0240-4f40-ba7c-1fe84da3235c"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"estack-hagent-dashboard-int","port":{"name":"sch-front-port"}}},"path":"/hostha","pathType":"Prefix"}]}}],"tls":[{"hosts":["estack-hagent-dashboard","estack-hagent-dashboard.openstack","estack-hagent-dashboard.openstack.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: estack-hagent
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: estack-hagent-dashboard
+    namespace: openstack
+    resourceVersion: "1507733"
+    uid: bc595516-e67d-45d1-bbbc-5bd8b0ca453c
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: estack-hagent-dashboard-int
+              port:
+                name: sch-front-port
+          path: /hostha
+          pathType: Prefix
+    tls:
+    - hosts:
+      - estack-hagent-dashboard
+      - estack-hagent-dashboard.openstack
+      - estack-hagent-dashboard.openstack.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/estack_hagent_dashboard_api/(.*) /$1 break;
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/configuration-snippet":"rewrite ^/estack_hagent_dashboard_api/(.*) /$1 break;\n","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"estack-hagent","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T10:17:55Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"estack-hagent-dashboard-api","namespace":"openstack","resourceVersion":"1418987","uid":"e56209d6-ae44-4d8d-b2ae-8f4fab313bb4"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"estack-hagent-dashboard-api","port":{"name":"pub"}}},"path":"/estack_hagent_dashboard_api","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: estack-hagent
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: estack-hagent-dashboard-api
+    namespace: openstack
+    resourceVersion: "1507734"
+    uid: 5a3f9fd3-7532-461e-9cb1-1e8c8eaed41b
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: estack-hagent-dashboard-api
+              port:
+                name: pub
+          path: /estack_hagent_dashboard_api
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"glance","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:22:55Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"glance","namespace":"openstack","resourceVersion":"1418545","uid":"7baae285-aebc-41be-943e-ecfcf252d336"},"spec":{"rules":[{"host":"glance","http":{"paths":[{"backend":{"service":{"name":"glance-api","port":{"name":"g-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"glance.openstack","http":{"paths":[{"backend":{"service":{"name":"glance-api","port":{"name":"g-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"glance.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"glance-api","port":{"name":"g-api"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: glance
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: glance
+    namespace: openstack
+    resourceVersion: "1507735"
+    uid: 01d776c1-453c-4a5b-ba0f-aae586d24330
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: glance
+      http:
+        paths:
+        - backend:
+            service:
+              name: glance-api
+              port:
+                name: g-api
+          path: /
+          pathType: Prefix
+    - host: glance.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: glance-api
+              port:
+                name: g-api
+          path: /
+          pathType: Prefix
+    - host: glance.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: glance-api
+              port:
+                name: g-api
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/eims/(.*) /$1 break;
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/configuration-snippet":"rewrite ^/eims/(.*) /$1 break;\n","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"glance","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:22:56Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"glance-dashboard","namespace":"openstack","resourceVersion":"1418569","uid":"d0c3d981-966d-4ff3-a640-c9fb862c95d7"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"glance-dashboard-int","port":{"name":"sch-front-port"}}},"path":"/eims","pathType":"Prefix"}]}}],"tls":[{"hosts":["glance-dashboard","glance-dashboard.openstack","glance-dashboard.openstack.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: glance
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: glance-dashboard
+    namespace: openstack
+    resourceVersion: "1507736"
+    uid: 9d8e9bcc-8ea1-4861-8e56-8dde05c1c8db
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: glance-dashboard-int
+              port:
+                name: sch-front-port
+          path: /eims
+          pathType: Prefix
+    tls:
+    - hosts:
+      - glance-dashboard
+      - glance-dashboard.openstack
+      - glance-dashboard.openstack.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/glance_dashboard_api/(.*) /$1 break;
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/configuration-snippet":"rewrite ^/glance_dashboard_api/(.*) /$1 break;\n","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"glance","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:22:56Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"glance-dashboard-api","namespace":"openstack","resourceVersion":"1418573","uid":"284906f3-e12f-406e-9e06-39879656b064"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"glance-dashboard-api","port":{"name":"glance-pub"}}},"path":"/glance_dashboard_api","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: glance
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: glance-dashboard-api
+    namespace: openstack
+    resourceVersion: "1507737"
+    uid: 658d8f01-e878-4fcc-b7af-6b44b068cbc9
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: glance-dashboard-api
+              port:
+                name: glance-pub
+          path: /glance_dashboard_api
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"glance","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:22:57Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"glance-reg","namespace":"openstack","resourceVersion":"1418568","uid":"342de04c-fbd4-4200-82c3-1b2848a88f5f"},"spec":{"rules":[{"host":"glance-reg","http":{"paths":[{"backend":{"service":{"name":"glance-registry","port":{"name":"g-reg"}}},"path":"/","pathType":"Prefix"}]}},{"host":"glance-reg.openstack","http":{"paths":[{"backend":{"service":{"name":"glance-registry","port":{"name":"g-reg"}}},"path":"/","pathType":"Prefix"}]}},{"host":"glance-reg.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"glance-registry","port":{"name":"g-reg"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: glance
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: glance-reg
+    namespace: openstack
+    resourceVersion: "1507738"
+    uid: 82d5c1d7-dba6-4300-aa63-715ce694651e
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: glance-reg
+      http:
+        paths:
+        - backend:
+            service:
+              name: glance-registry
+              port:
+                name: g-reg
+          path: /
+          pathType: Prefix
+    - host: glance-reg.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: glance-registry
+              port:
+                name: g-reg
+          path: /
+          pathType: Prefix
+    - host: glance-reg.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: glance-registry
+              port:
+                name: g-reg
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"ceilometer","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:21:57Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"gnocchi","namespace":"openstack","resourceVersion":"1418541","uid":"22e83f8c-1407-4612-bf3b-f7a0a7fc00d6"},"spec":{"rules":[{"host":"gnocchi","http":{"paths":[{"backend":{"service":{"name":"gnocchi-api","port":{"name":"gn-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"gnocchi.openstack","http":{"paths":[{"backend":{"service":{"name":"gnocchi-api","port":{"name":"gn-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"gnocchi.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"gnocchi-api","port":{"name":"gn-api"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: ceilometer
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: gnocchi
+    namespace: openstack
+    resourceVersion: "1507739"
+    uid: 48e9a2e8-3f2d-493b-a98d-f139fca93a4b
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: gnocchi
+      http:
+        paths:
+        - backend:
+            service:
+              name: gnocchi-api
+              port:
+                name: gn-api
+          path: /
+          pathType: Prefix
+    - host: gnocchi.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: gnocchi-api
+              port:
+                name: gn-api
+          path: /
+          pathType: Prefix
+    - host: gnocchi.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: gnocchi-api
+              port:
+                name: gn-api
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"meta.helm.sh/release-name":"estack-dm","meta.helm.sh/release-namespace":"openstack","nginx.ingress.kubernetes.io/auth-response-headers":"Authorization","nginx.ingress.kubernetes.io/auth-signin":"https://$host/","nginx.ingress.kubernetes.io/auth-url":"http://oath-gateway.ems.svc.cluster.local/decisions$request_uri","nginx.ingress.kubernetes.io/configuration-snippet":"rewrite ^/(.*)$ /apis/openstack/$1 break;\n"},"creationTimestamp":"2025-05-23T10:18:28Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"gpu-api","namespace":"openstack","resourceVersion":"1418986","uid":"dee37a42-d41e-4850-adff-5fa01a17ef34"},"spec":{"rules":[{"host":"nodegpu.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"gpu-api","port":{"number":80}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: estack-dm
+      meta.helm.sh/release-namespace: openstack
+      nginx.ingress.kubernetes.io/auth-response-headers: Authorization
+      nginx.ingress.kubernetes.io/auth-signin: https://$host/
+      nginx.ingress.kubernetes.io/auth-url: http://oath-gateway.ems.svc.cluster.local/decisions$request_uri
+      nginx.ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/(.*)$ /apis/openstack/$1 break;
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: gpu-api
+    namespace: openstack
+    resourceVersion: "1507740"
+    uid: 4f64abfd-9802-4069-a867-09dda45a8168
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: nodegpu.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: gpu-api
+              port:
+                number: 80
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"meta.helm.sh/release-name":"grafana","meta.helm.sh/release-namespace":"openstack","nginx.ingress.kubernetes.io/configuration-snippet":"rewrite ^/ecms/(.*) /$1 break;\n","nginx.ingress.kubernetes.io/custom-http-errors":"404,500"},"creationTimestamp":"2025-05-23T11:19:58Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"grafana","namespace":"openstack","resourceVersion":"1418505","uid":"188d527c-59b0-4d45-8903-a574dc50b9bb"},"spec":{"rules":[{"host":"grafana","http":{"paths":[{"backend":{"service":{"name":"grafana-dashboard","port":{"name":"dashboard"}}},"path":"/","pathType":"Prefix"}]}},{"host":"grafana.openstack","http":{"paths":[{"backend":{"service":{"name":"grafana-dashboard","port":{"name":"dashboard"}}},"path":"/","pathType":"Prefix"}]}},{"host":"grafana.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"grafana-dashboard","port":{"name":"dashboard"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: grafana
+      meta.helm.sh/release-namespace: openstack
+      nginx.ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/ecms/(.*) /$1 break;
+      nginx.ingress.kubernetes.io/custom-http-errors: 404,500
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: grafana
+    namespace: openstack
+    resourceVersion: "1507741"
+    uid: df8fb62b-be89-4bb5-91a0-dab85e0290a6
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: grafana
+      http:
+        paths:
+        - backend:
+            service:
+              name: grafana-dashboard
+              port:
+                name: dashboard
+          path: /
+          pathType: Prefix
+    - host: grafana.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: grafana-dashboard
+              port:
+                name: dashboard
+          path: /
+          pathType: Prefix
+    - host: grafana.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: grafana-dashboard
+              port:
+                name: dashboard
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"meta.helm.sh/release-name":"grafana","meta.helm.sh/release-namespace":"openstack","nginx.ingress.kubernetes.io/affinity":"cookie","nginx.ingress.kubernetes.io/configuration-snippet":"rewrite ^/ecms/(.*) /$1 break;\nrewrite ^/ecms$ / break;\n","nginx.ingress.kubernetes.io/custom-http-errors":"404,500","nginx.ingress.kubernetes.io/force-ssl-redirect":"true","nginx.ingress.kubernetes.io/proxy-body-size":"0","nginx.ingress.kubernetes.io/proxy-cookie-path":"~(.*) \"$1; Secure; SameSite=None\"","nginx.ingress.kubernetes.io/proxy-redirect-from":"http://","nginx.ingress.kubernetes.io/proxy-redirect-to":"https://","nginx.ingress.kubernetes.io/session-cookie-name":"escookie"},"creationTimestamp":"2025-05-23T11:19:58Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"grafana-backend","namespace":"openstack","resourceVersion":"1418521","uid":"a8f05907-f2a7-4c16-bf43-c807613ffc3c"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"grafana-dashboard","port":{"name":"dashboard"}}},"path":"/ecms","pathType":"Prefix"}]}}],"tls":[{"hosts":["grafana","grafana.openstack","grafana.openstack.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: grafana
+      meta.helm.sh/release-namespace: openstack
+      nginx.ingress.kubernetes.io/affinity: cookie
+      nginx.ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/ecms/(.*) /$1 break;
+        rewrite ^/ecms$ / break;
+      nginx.ingress.kubernetes.io/custom-http-errors: 404,500
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+      nginx.ingress.kubernetes.io/proxy-cookie-path: ~(.*) "$1; Secure; SameSite=None"
+      nginx.ingress.kubernetes.io/proxy-redirect-from: http://
+      nginx.ingress.kubernetes.io/proxy-redirect-to: https://
+      nginx.ingress.kubernetes.io/session-cookie-name: escookie
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: grafana-backend
+    namespace: openstack
+    resourceVersion: "1507742"
+    uid: f7ee174a-c2f4-4dde-a588-48fa9fef5906
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: grafana-dashboard
+              port:
+                name: dashboard
+          path: /ecms
+          pathType: Prefix
+    tls:
+    - hosts:
+      - grafana
+      - grafana.openstack
+      - grafana.openstack.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"horizon","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T10:17:07Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"horizon","namespace":"openstack","resourceVersion":"1418960","uid":"a5963c35-a1a9-4ab4-8e9c-6b209b0d29a2"},"spec":{"rules":[{"host":"horizon","http":{"paths":[{"backend":{"service":{"name":"horizon-int","port":{"name":"http"}}},"path":"/","pathType":"Prefix"}]}},{"host":"horizon.openstack","http":{"paths":[{"backend":{"service":{"name":"horizon-int","port":{"name":"http"}}},"path":"/","pathType":"Prefix"}]}},{"host":"horizon.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"horizon-int","port":{"name":"http"}}},"path":"/","pathType":"Prefix"}]}}],"tls":[{"hosts":["horizon","horizon.openstack","horizon.openstack.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: horizon
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: horizon
+    namespace: openstack
+    resourceVersion: "1507743"
+    uid: 00a2edc3-4129-4bd4-8334-3603a89ce9e4
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: horizon
+      http:
+        paths:
+        - backend:
+            service:
+              name: horizon-int
+              port:
+                name: http
+          path: /
+          pathType: Prefix
+    - host: horizon.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: horizon-int
+              port:
+                name: http
+          path: /
+          pathType: Prefix
+    - host: horizon.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: horizon-int
+              port:
+                name: http
+          path: /
+          pathType: Prefix
+    tls:
+    - hosts:
+      - horizon
+      - horizon.openstack
+      - horizon.openstack.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/maintain/file/(.*) /$1 break;
+        rewrite ^/rest_api/glance/(.*) /$1 break;
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/proxy-redirect-from: http://
+      ingress.kubernetes.io/proxy-redirect-to: https://
+      ingress.kubernetes.io/session-cookie-hash: sha1
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/configuration-snippet":"rewrite ^/maintain/file/(.*) /$1 break;\nrewrite ^/rest_api/glance/(.*) /$1 break;\n","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/proxy-redirect-from":"http://","ingress.kubernetes.io/proxy-redirect-to":"https://","ingress.kubernetes.io/session-cookie-hash":"sha1","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"horizon","meta.helm.sh/release-namespace":"openstack","nginx.ingress.kubernetes.io/cors-allow-headers":"Upload,X-Csrftoken,X-Auth-Token,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization","nginx.ingress.kubernetes.io/cors-allow-methods":"PUT, GET, POST, OPTIONS","nginx.ingress.kubernetes.io/cors-allow-origin":"*","nginx.ingress.kubernetes.io/enable-cors":"true"},"creationTimestamp":"2025-05-23T10:17:07Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"horizon-default-backend","namespace":"openstack","resourceVersion":"1418950","uid":"6dca8a4f-c6c8-4839-af42-5703f73a9e68"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"horizon-int","port":{"name":"http"}}},"path":"/ecs/api/register/invite_emails","pathType":"Prefix"},{"backend":{"service":{"name":"horizon-int","port":{"name":"http"}}},"path":"/ecs/api/keystone/projects","pathType":"Prefix"},{"backend":{"service":{"name":"horizon-int","port":{"name":"http"}}},"path":"/ecs/api/security/password_strength","pathType":"Prefix"},{"backend":{"service":{"name":"horizon-static-int","port":{"name":"http"}}},"path":"/ecs/static/","pathType":"Prefix"},{"backend":{"service":{"name":"horizon-int","port":{"name":"http"}}},"path":"/ecs/","pathType":"Prefix"},{"backend":{"service":{"name":"horizon-static-int","port":{"name":"http"}}},"path":"/static/","pathType":"Prefix"},{"backend":{"service":{"name":"es-notfound","port":{"name":"es-notfound"}}},"path":"/es404.png","pathType":"Prefix"},{"backend":{"service":{"name":"es-notfound","port":{"name":"es-notfound"}}},"path":"/es500.png","pathType":"Prefix"},{"backend":{"service":{"name":"nova-novncproxy","port":{"name":"nova-novncproxy"}}},"path":"/novnc","pathType":"Prefix"},{"backend":{"service":{"name":"nova-novncproxy","port":{"name":"nova-novncproxy"}}},"path":"/websockify","pathType":"Prefix"},{"backend":{"service":{"name":"esguides-int","port":{"name":"esguides-int"}}},"path":"/esguides","pathType":"Prefix"},{"backend":{"service":{"name":"busybox","port":{"name":"shell"}}},"path":"/maintain/shell/","pathType":"Prefix"},{"backend":{"service":{"name":"busybox","port":{"name":"file"}}},"path":"/maintain/file/","pathType":"Prefix"},{"backend":{"service":{"name":"glance-api","port":{"name":"g-api"}}},"path":"/rest_api/glance/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: horizon
+      meta.helm.sh/release-namespace: openstack
+      nginx.ingress.kubernetes.io/cors-allow-headers: Upload,X-Csrftoken,X-Auth-Token,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization
+      nginx.ingress.kubernetes.io/cors-allow-methods: PUT, GET, POST, OPTIONS
+      nginx.ingress.kubernetes.io/cors-allow-origin: '*'
+      nginx.ingress.kubernetes.io/enable-cors: "true"
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: horizon-default-backend
+    namespace: openstack
+    resourceVersion: "1507747"
+    uid: 24798f98-2822-44d9-bb95-61143331e2d9
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: horizon-int
+              port:
+                name: http
+          path: /ecs/api/register/invite_emails
+          pathType: Prefix
+        - backend:
+            service:
+              name: horizon-int
+              port:
+                name: http
+          path: /ecs/api/keystone/projects
+          pathType: Prefix
+        - backend:
+            service:
+              name: horizon-int
+              port:
+                name: http
+          path: /ecs/api/security/password_strength
+          pathType: Prefix
+        - backend:
+            service:
+              name: horizon-static-int
+              port:
+                name: http
+          path: /ecs/static/
+          pathType: Prefix
+        - backend:
+            service:
+              name: horizon-int
+              port:
+                name: http
+          path: /ecs/
+          pathType: Prefix
+        - backend:
+            service:
+              name: horizon-static-int
+              port:
+                name: http
+          path: /static/
+          pathType: Prefix
+        - backend:
+            service:
+              name: es-notfound
+              port:
+                name: es-notfound
+          path: /es404.png
+          pathType: Prefix
+        - backend:
+            service:
+              name: es-notfound
+              port:
+                name: es-notfound
+          path: /es500.png
+          pathType: Prefix
+        - backend:
+            service:
+              name: nova-novncproxy
+              port:
+                name: nova-novncproxy
+          path: /novnc
+          pathType: Prefix
+        - backend:
+            service:
+              name: nova-novncproxy
+              port:
+                name: nova-novncproxy
+          path: /websockify
+          pathType: Prefix
+        - backend:
+            service:
+              name: esguides-int
+              port:
+                name: esguides-int
+          path: /esguides
+          pathType: Prefix
+        - backend:
+            service:
+              name: busybox
+              port:
+                name: shell
+          path: /maintain/shell/
+          pathType: Prefix
+        - backend:
+            service:
+              name: busybox
+              port:
+                name: file
+          path: /maintain/file/
+          pathType: Prefix
+        - backend:
+            service:
+              name: glance-api
+              port:
+                name: g-api
+          path: /rest_api/glance/
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"estack-hagent","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T10:17:54Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"hostha","namespace":"openstack","resourceVersion":"1418963","uid":"ccf7f0b4-99f2-48b2-96da-cf41758f53cd"},"spec":{"rules":[{"host":"hostha","http":{"paths":[{"backend":{"service":{"name":"hagent-api","port":{"name":"hagent-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"hostha.openstack","http":{"paths":[{"backend":{"service":{"name":"hagent-api","port":{"name":"hagent-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"hostha.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"hagent-api","port":{"name":"hagent-api"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: estack-hagent
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: hostha
+    namespace: openstack
+    resourceVersion: "1507748"
+    uid: 262cf785-3819-4f42-938f-3463cecbd33b
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: hostha
+      http:
+        paths:
+        - backend:
+            service:
+              name: hagent-api
+              port:
+                name: hagent-api
+          path: /
+          pathType: Prefix
+    - host: hostha.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: hagent-api
+              port:
+                name: hagent-api
+          path: /
+          pathType: Prefix
+    - host: hostha.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: hagent-api
+              port:
+                name: hagent-api
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"keystone","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T10:04:38Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"keystone","namespace":"openstack","resourceVersion":"1416844","uid":"9a0ff2e0-1396-4506-bfb6-0fec6bfb865e"},"spec":{"rules":[{"host":"keystone","http":{"paths":[{"backend":{"service":{"name":"keystone-api","port":{"name":"ks-pub"}}},"path":"/","pathType":"Prefix"}]}},{"host":"keystone.openstack","http":{"paths":[{"backend":{"service":{"name":"keystone-api","port":{"name":"ks-pub"}}},"path":"/","pathType":"Prefix"}]}},{"host":"keystone.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"keystone-api","port":{"name":"ks-pub"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: keystone
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: keystone
+    namespace: openstack
+    resourceVersion: "1507749"
+    uid: 2b778ccc-3aa2-446e-bbb3-16bffcf6cb00
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: keystone
+      http:
+        paths:
+        - backend:
+            service:
+              name: keystone-api
+              port:
+                name: ks-pub
+          path: /
+          pathType: Prefix
+    - host: keystone.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: keystone-api
+              port:
+                name: ks-pub
+          path: /
+          pathType: Prefix
+    - host: keystone.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: keystone-api
+              port:
+                name: ks-pub
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"meta.helm.sh/release-name":"keystone","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T10:04:38Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"keystone-sso","namespace":"openstack","resourceVersion":"1418982","uid":"3ea8b3bd-03c0-420f-b7f9-3b72c7a6ddd1"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"keystone-api","port":{"name":"ks-pub"}}},"path":"/v3/auth/","pathType":"Prefix"},{"backend":{"service":{"name":"keystone-api","port":{"name":"ks-pub"}}},"path":"/v3/OS-FEDERATION/","pathType":"Prefix"},{"backend":{"service":{"name":"keystone-api","port":{"name":"ks-pub"}}},"path":"/Shibboleth.sso/","pathType":"Prefix"},{"backend":{"service":{"name":"keystone-api","port":{"name":"ks-pub"}}},"path":"/v3/sync/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: keystone
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: keystone-sso
+    namespace: openstack
+    resourceVersion: "1507750"
+    uid: b76de462-a9b9-4714-afe5-69c156560ae8
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: keystone-api
+              port:
+                name: ks-pub
+          path: /v3/auth/
+          pathType: Prefix
+        - backend:
+            service:
+              name: keystone-api
+              port:
+                name: ks-pub
+          path: /v3/OS-FEDERATION/
+          pathType: Prefix
+        - backend:
+            service:
+              name: keystone-api
+              port:
+                name: ks-pub
+          path: /Shibboleth.sso/
+          pathType: Prefix
+        - backend:
+            service:
+              name: keystone-api
+              port:
+                name: ks-pub
+          path: /v3/sync/
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"nova","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:28:01Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"metadata","namespace":"openstack","resourceVersion":"1417076","uid":"c303fba0-9109-49dd-a791-675aaf5cc35a"},"spec":{"rules":[{"host":"metadata","http":{"paths":[{"backend":{"service":{"name":"nova-metadata","port":{"name":"n-meta"}}},"path":"/","pathType":"Prefix"}]}},{"host":"metadata.openstack","http":{"paths":[{"backend":{"service":{"name":"nova-metadata","port":{"name":"n-meta"}}},"path":"/","pathType":"Prefix"}]}},{"host":"metadata.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"nova-metadata","port":{"name":"n-meta"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: nova
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: metadata
+    namespace: openstack
+    resourceVersion: "1507751"
+    uid: 8edca752-cabf-4de6-ae3b-87e21a617384
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: metadata
+      http:
+        paths:
+        - backend:
+            service:
+              name: nova-metadata
+              port:
+                name: n-meta
+          path: /
+          pathType: Prefix
+    - host: metadata.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: nova-metadata
+              port:
+                name: n-meta
+          path: /
+          pathType: Prefix
+    - host: metadata.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: nova-metadata
+              port:
+                name: n-meta
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"proton","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:23:26Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"neutron","namespace":"openstack","resourceVersion":"1417031","uid":"edbf6bf2-30f1-4cfc-bd8d-0c0a1060c38d"},"spec":{"rules":[{"host":"neutron","http":{"paths":[{"backend":{"service":{"name":"neutron-server","port":{"name":"q-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"neutron.openstack","http":{"paths":[{"backend":{"service":{"name":"neutron-server","port":{"name":"q-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"neutron.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"neutron-server","port":{"name":"q-api"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: proton
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: neutron
+    namespace: openstack
+    resourceVersion: "1507752"
+    uid: 83724a25-3282-4844-9c29-33cbd1f7b21f
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: neutron
+      http:
+        paths:
+        - backend:
+            service:
+              name: neutron-server
+              port:
+                name: q-api
+          path: /
+          pathType: Prefix
+    - host: neutron.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: neutron-server
+              port:
+                name: q-api
+          path: /
+          pathType: Prefix
+    - host: neutron.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: neutron-server
+              port:
+                name: q-api
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"nova","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:28:03Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"nova","namespace":"openstack","resourceVersion":"1417093","uid":"a6f9ddf9-5805-4aa0-9e3d-88673ddcd355"},"spec":{"rules":[{"host":"nova","http":{"paths":[{"backend":{"service":{"name":"nova-api","port":{"name":"n-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"nova.openstack","http":{"paths":[{"backend":{"service":{"name":"nova-api","port":{"name":"n-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"nova.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"nova-api","port":{"name":"n-api"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: nova
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: nova
+    namespace: openstack
+    resourceVersion: "1507753"
+    uid: 4eac71b4-61f1-4735-8bed-3ae5e984d6d7
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: nova
+      http:
+        paths:
+        - backend:
+            service:
+              name: nova-api
+              port:
+                name: n-api
+          path: /
+          pathType: Prefix
+    - host: nova.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: nova-api
+              port:
+                name: n-api
+          path: /
+          pathType: Prefix
+    - host: nova.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: nova-api
+              port:
+                name: n-api
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/eec/(.*) /$1 break;
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/configuration-snippet":"rewrite ^/eec/(.*) /$1 break;\n","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"nova","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:28:03Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"nova-dashboard","namespace":"openstack","resourceVersion":"1417098","uid":"8417c96c-d927-4c3d-b2eb-ae34fff2f742"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"nova-dashboard-int","port":{"name":"sch-front-port"}}},"path":"/eec/","pathType":"Prefix"}]}}],"tls":[{"hosts":["nova-dashboard","nova-dashboard.openstack","nova-dashboard.openstack.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: nova
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: nova-dashboard
+    namespace: openstack
+    resourceVersion: "1507755"
+    uid: 6ba3ff14-a6e5-4796-a8ad-1a06ca0c774b
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: nova-dashboard-int
+              port:
+                name: sch-front-port
+          path: /eec/
+          pathType: Prefix
+    tls:
+    - hosts:
+      - nova-dashboard
+      - nova-dashboard.openstack
+      - nova-dashboard.openstack.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/nova_dashboard_api/(.*) /$1 break;
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/configuration-snippet":"rewrite ^/nova_dashboard_api/(.*) /$1 break;\n","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"nova","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:28:02Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"nova-dashboard-api","namespace":"openstack","resourceVersion":"1417107","uid":"8e7a5da3-8f19-4d74-aefd-14e9804c9ef3"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"nova-dashboard-api","port":{"name":"nova-pub"}}},"path":"/nova_dashboard_api","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: nova
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: nova-dashboard-api
+    namespace: openstack
+    resourceVersion: "1507757"
+    uid: 60b4bfba-6f6e-41b4-b994-de375ec7443c
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: nova-dashboard-api
+              port:
+                name: nova-pub
+          path: /nova_dashboard_api
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/ota/(.*) /$1 break;
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/configuration-snippet":"rewrite ^/ota/(.*) /$1 break;\n","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"ota","meta.helm.sh/release-namespace":"openstack","nginx.ingress.kubernetes.io/proxy-body-size":"0"},"creationTimestamp":"2025-05-23T10:05:40Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"ota-dashboard","namespace":"openstack","resourceVersion":"1418939","uid":"85575c3a-f1aa-47d8-b020-f2aac21a08e6"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"ota-dashboard-int","port":{"name":"ota-front-port"}}},"path":"/ota","pathType":"Prefix"}]}}],"tls":[{"hosts":["ota-dashboard","ota-dashboard.openstack","ota-dashboard.openstack.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: ota
+      meta.helm.sh/release-namespace: openstack
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    creationTimestamp: "2026-04-13T12:56:00Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: ota-dashboard
+    namespace: openstack
+    resourceVersion: "1507759"
+    uid: b1189d80-aa4f-4859-9272-259a1f57c977
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: ota-dashboard-int
+              port:
+                name: ota-front-port
+          path: /ota
+          pathType: Prefix
+    tls:
+    - hosts:
+      - ota-dashboard
+      - ota-dashboard.openstack
+      - ota-dashboard.openstack.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/proxy-body-size: "0"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/proxy-body-size":"0","meta.helm.sh/release-name":"ota","meta.helm.sh/release-namespace":"openstack","nginx.ingress.kubernetes.io/proxy-body-size":"0","nginx.ingress.kubernetes.io/proxy-connect-timeout":"3600","nginx.ingress.kubernetes.io/proxy-read-timeout":"3600","nginx.ingress.kubernetes.io/proxy-send-timeout":"3600"},"creationTimestamp":"2025-05-23T10:05:40Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"ota-openapi","namespace":"openstack","resourceVersion":"1418948","uid":"dfe310d9-7620-4081-a225-c9c8ac3602b5"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"ota-openapi-int","port":{"name":"openapi-port"}}},"path":"/ota_openapi","pathType":"Prefix"}]}}],"tls":[{"hosts":["ota-openapi","ota-openapi.openstack","ota-openapi.openstack.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: ota
+      meta.helm.sh/release-namespace: openstack
+      nginx.ingress.kubernetes.io/proxy-body-size: "0"
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    creationTimestamp: "2026-04-13T12:56:01Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: ota-openapi
+    namespace: openstack
+    resourceVersion: "1507760"
+    uid: 45979517-7aa8-44d6-85ca-e22af0c28505
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: ota-openapi-int
+              port:
+                name: openapi-port
+          path: /ota_openapi
+          pathType: Prefix
+    tls:
+    - hosts:
+      - ota-openapi
+      - ota-openapi.openstack
+      - ota-openapi.openstack.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/rewrite-target: /
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/rewrite-target":"/","meta.helm.sh/release-name":"nova","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:28:04Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"placement","namespace":"openstack","resourceVersion":"1417103","uid":"7408554c-f81a-4ba8-a75e-9a532ef38c5c"},"spec":{"rules":[{"host":"placement","http":{"paths":[{"backend":{"service":{"name":"placement-api","port":{"name":"p-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"placement.openstack","http":{"paths":[{"backend":{"service":{"name":"placement-api","port":{"name":"p-api"}}},"path":"/","pathType":"Prefix"}]}},{"host":"placement.openstack.svc.cluster.local","http":{"paths":[{"backend":{"service":{"name":"placement-api","port":{"name":"p-api"}}},"path":"/","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: nova
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:01Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: placement
+    namespace: openstack
+    resourceVersion: "1507762"
+    uid: fbe31083-e993-4d83-bfb3-ab8303f686fc
+  spec:
+    ingressClassName: apisix
+    rules:
+    - host: placement
+      http:
+        paths:
+        - backend:
+            service:
+              name: placement-api
+              port:
+                name: p-api
+          path: /
+          pathType: Prefix
+    - host: placement.openstack
+      http:
+        paths:
+        - backend:
+            service:
+              name: placement-api
+              port:
+                name: p-api
+          path: /
+          pathType: Prefix
+    - host: placement.openstack.svc.cluster.local
+      http:
+        paths:
+        - backend:
+            service:
+              name: placement-api
+              port:
+                name: p-api
+          path: /
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/ens/(.*) /$1 break;
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/configuration-snippet":"rewrite ^/ens/(.*) /$1 break;\n","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"proton","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:23:24Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"proton-dashboard","namespace":"openstack","resourceVersion":"1417019","uid":"c2746e8c-b09b-4b0b-978e-f9d7bd8630ee"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"proton-dashboard-int","port":{"name":"sch-front-port"}}},"path":"/ens","pathType":"Prefix"}]}}],"tls":[{"hosts":["proton-dashboard","proton-dashboard.openstack","proton-dashboard.openstack.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: proton
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:01Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: proton-dashboard
+    namespace: openstack
+    resourceVersion: "1507764"
+    uid: 6115917f-54ac-4b5c-af25-b92b3f711aea
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: proton-dashboard-int
+              port:
+                name: sch-front-port
+          path: /ens
+          pathType: Prefix
+    tls:
+    - hosts:
+      - proton-dashboard
+      - proton-dashboard.openstack
+      - proton-dashboard.openstack.svc.cluster.local
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","meta.helm.sh/release-name":"proton","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T11:23:24Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"proton-dashboard-api","namespace":"openstack","resourceVersion":"1419039","uid":"918b0996-0ef6-4b88-bbc7-ea8e6208ec3a"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"proton-dashboard-api-int","port":{"name":"proton-pub"}}},"path":"/ens_dashboard_api","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: proton
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:01Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: proton-dashboard-api
+    namespace: openstack
+    resourceVersion: "1507766"
+    uid: 74b802fe-459d-4232-9462-b64ee692c217
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: proton-dashboard-api-int
+              port:
+                name: proton-pub
+          path: /ens_dashboard_api
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/backend-protocol: HTTPS
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/session-cookie-hash: sha1
+      ingress.kubernetes.io/session-cookie-name: escookie
+      ingress.kubernetes.io/whitelist-source-range: 10.20.0.0/24,192.168.10.0/24
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/backend-protocol":"HTTPS","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/session-cookie-hash":"sha1","ingress.kubernetes.io/session-cookie-name":"escookie","ingress.kubernetes.io/whitelist-source-range":"10.20.0.0/24,192.168.10.0/24","meta.helm.sh/release-name":"docker-registry","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T10:04:15Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"registry-default-backend","namespace":"openstack","resourceVersion":"1418528","uid":"07743e37-185f-49e6-99db-69efdbb6b942"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"docker-registry","port":{"name":"registry"}}},"path":"/v2","pathType":"Prefix"}]}}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: docker-registry
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:01Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: registry-default-backend
+    namespace: openstack
+    resourceVersion: "1507768"
+    uid: e090c104-98b6-4bfd-89d9-44d5e7777ceb
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: docker-registry
+              port:
+                name: registry
+          path: /v2
+          pathType: Prefix
+  status:
+    loadBalancer: {}
+- apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    annotations:
+      ingress.kubernetes.io/affinity: cookie
+      ingress.kubernetes.io/configuration-snippet: |
+        rewrite ^/ecas$ /ecas/ break;
+      ingress.kubernetes.io/custom-http-errors: 404,500
+      ingress.kubernetes.io/proxy-body-size: "0"
+      ingress.kubernetes.io/proxy-read-timeout: "1800"
+      ingress.kubernetes.io/proxy-redirect-from: http://
+      ingress.kubernetes.io/proxy-redirect-to: https://
+      ingress.kubernetes.io/session-cookie-hash: sha1
+      ingress.kubernetes.io/session-cookie-name: escookie
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"ingress.kubernetes.io/affinity":"cookie","ingress.kubernetes.io/configuration-snippet":"rewrite ^/ecas$ /ecas/ break;\n","ingress.kubernetes.io/custom-http-errors":"404,500","ingress.kubernetes.io/proxy-body-size":"0","ingress.kubernetes.io/proxy-read-timeout":"1800","ingress.kubernetes.io/proxy-redirect-from":"http://","ingress.kubernetes.io/proxy-redirect-to":"https://","ingress.kubernetes.io/session-cookie-hash":"sha1","ingress.kubernetes.io/session-cookie-name":"escookie","meta.helm.sh/release-name":"roller-dashboard","meta.helm.sh/release-namespace":"openstack"},"creationTimestamp":"2025-05-23T10:27:40Z","generation":1,"labels":{"app.kubernetes.io/managed-by":"Helm"},"name":"roller","namespace":"openstack","resourceVersion":"1419005","uid":"d769ac4d-bba6-44a9-bd65-0091c7203091"},"spec":{"rules":[{"http":{"paths":[{"backend":{"service":{"name":"roller-dashboard","port":{"number":80}}},"path":"/ecas","pathType":"Prefix"}]}}],"tls":[{"hosts":["roller","roller.openstack","roller.openstack.svc.cluster.local"]}]},"status":{"loadBalancer":{"ingress":[{"ip":"10.20.0.7"},{"ip":"10.20.0.8"},{"ip":"10.20.0.9"}]}}}
+      meta.helm.sh/release-name: roller-dashboard
+      meta.helm.sh/release-namespace: openstack
+    creationTimestamp: "2026-04-13T12:56:01Z"
+    generation: 2
+    labels:
+      app.kubernetes.io/managed-by: Helm
+    name: roller
+    namespace: openstack
+    resourceVersion: "1507770"
+    uid: 0e242eb5-e2ba-4231-99d4-8ebf5d5d1105
+  spec:
+    ingressClassName: apisix
+    rules:
+    - http:
+        paths:
+        - backend:
+            service:
+              name: roller-dashboard
+              port:
+                number: 80
+          path: /ecas
+          pathType: Prefix
+    tls:
+    - hosts:
+      - roller
+      - roller.openstack
+      - roller.openstack.svc.cluster.local
+  status:
+    loadBalancer: {}
+kind: List
+metadata:
+  resourceVersion: ""

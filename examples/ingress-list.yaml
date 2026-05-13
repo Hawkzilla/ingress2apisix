@@ -1,0 +1,49 @@
+apiVersion: networking.k8s.io/v1
+kind: IngressList
+items:
+  - apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: app-1
+      namespace: default
+      annotations:
+        nginx.ingress.kubernetes.io/enable-cors: "true"
+        nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    spec:
+      ingressClassName: nginx
+      tls:
+        - hosts:
+            - app1.example.com
+          secretName: app1-tls
+      rules:
+        - host: app1.example.com
+          http:
+            paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: app1-svc
+                    port:
+                      number: 80
+  - apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: app-2
+      namespace: default
+      annotations:
+        nginx.ingress.kubernetes.io/rewrite-target: /$2
+        nginx.ingress.kubernetes.io/limit-rps: "100"
+    spec:
+      ingressClassName: nginx
+      rules:
+        - host: app2.example.com
+          http:
+            paths:
+              - path: /api(/|$)(.*)
+                pathType: ImplementationSpecific
+                backend:
+                  service:
+                    name: app2-svc
+                    port:
+                      number: 8080

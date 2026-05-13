@@ -1,0 +1,33 @@
+# Step 1: 部署测试后端（会返回 Set-Cookie 的服务）
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cookie-backend
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cookie-backend
+  template:
+    metadata:
+      labels:
+        app: cookie-backend
+    spec:
+      containers:
+        - name: httpbin
+          image: kennethreitz/httpbin
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cookie-backend
+  namespace: default
+spec:
+  selector:
+    app: cookie-backend
+  ports:
+    - port: 80
+      targetPort: 80

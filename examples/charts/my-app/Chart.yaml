@@ -1,0 +1,4 @@
+apiVersion: v2
+name: my-app
+version: 1.0.0
+description: Example Helm chart for ingress2apisix check demo

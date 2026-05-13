@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cookie-test-ingress
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/ingress.class: apisix
+    k8s.apisix.apache.org/plugin-config-name: cookie-test-ingress-plugins
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: cookie.test.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cookie-test-backend
+                port:
+                  number: 80
+---
+apiVersion: apisix.apache.org/v2
+kind: ApisixPluginConfig
+metadata:
+  name: cookie-test-ingress-plugins
+  namespace: default
+spec:
+  ingressClassName: apisix
+  plugins:
+    - name: proxy-cookie-flags
+      enable: true
+      config:
+        rules:
+          - match: "sessionid"
+            flags: ["SameSite=None", "Secure"]
+          - match: "auth_token"
+            flags: ["HttpOnly", "Secure"]
+          - match: "*"
+            flags: ["SameSite=Lax"]
