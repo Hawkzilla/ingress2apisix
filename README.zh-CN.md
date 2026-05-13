@@ -4,6 +4,10 @@
 
 `ingress2apisix` 是一个将 nginx Ingress 资源迁移到 APISIX Ingress Controller 的工具，支持文件转换、集群 apply、Helm Chart 扫描/迁移和 Web UI。
 
+## 使用预览
+
+![使用预览](usage.png)
+
 ## 功能
 
 - 将 `nginx.ingress.kubernetes.io/*` 和 `ingress.kubernetes.io/*` 注解转换为 APISIX Ingress Controller 可识别的配置。

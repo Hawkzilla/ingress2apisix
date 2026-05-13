@@ -4,6 +4,10 @@
 
 `ingress2apisix` converts nginx Ingress resources into APISIX Ingress Controller compatible resources. It supports file conversion, cluster apply, Helm chart scanning/migration, and a browser-based Web UI.
 
+## Usage Preview
+
+![Usage Preview](usage.png)
+
 ## Features
 
 - Converts `nginx.ingress.kubernetes.io/*` and `ingress.kubernetes.io/*` annotations into APISIX-native annotations where possible.
