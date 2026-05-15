@@ -181,7 +181,8 @@ var handledAnnotations = map[string]bool{
 	"proxy-redirect-to":   true,
 	// Configuration snippet (may produce PluginConfig or native annotations)
 	"configuration-snippet": true,
-	// proxy-cookie-path has no APISIX equivalent plugin; flagged via knownManualAnnotations
+	// proxy-cookie-path → proxy-cookie-path custom plugin
+	"proxy-cookie-path": true,
 	// Rate limiting → PluginConfig (no native APISIX annotation for these)
 	"limit-rps":         true,
 	"limit-rpm":         true,
@@ -198,7 +199,6 @@ var knownManualAnnotations = map[string]string{
 	"auth-tls-secret":        "需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6",
 	"auth-tls-verify-client": "需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6",
 	"auth-secret":            "需 ApisixConsumer CRD 配合 auth-type 注解，参见迁移文档 4.1.8",
-	"proxy-cookie-path":      "无等价插件，需手动评估 Cookie Path 改写需求，参见迁移文档 4.1.4",
 	"proxy-body-size":        "需全局配置 nginx_config.http.client_max_body_size，参见迁移文档 3.1",
 	"proxy-buffer-size":      "需全局配置 nginx_config.http_configuration_snippet.proxy_buffer_size，参见迁移文档 3.1",
 	"proxy-buffers-number":   "需全局配置 nginx_config.http_configuration_snippet.proxy_buffers，参见迁移文档 3.1",
@@ -540,7 +540,23 @@ func (c *Converter) buildPluginConfig(ing ingress.Ingress, ns string) (*apisix.A
 		}
 	}
 
-	// --- proxy-cookie-path is now flagged as manual migration (knownManualAnnotations) ---
+	// --- proxy-cookie-path → proxy-cookie-path custom plugin ---
+	if cookiePathAnnot, ok := getAnnotation(anns, "proxy-cookie-path"); ok {
+		pathPairs := parseProxyCookiePath(cookiePathAnnot)
+		if len(pathPairs) > 0 {
+			plugins = append(plugins, apisix.Plugin{
+				Name:   "proxy-cookie-path",
+				Enable: true,
+				Config: map[string]interface{}{
+					"path_pairs": pathPairs,
+				},
+			})
+		} else {
+			warnings = append(warnings,
+				fmt.Sprintf("[%s/%s] proxy-cookie-path=%q 无法解析为有效的路径替换规则，跳过自动转换",
+					ing.Metadata.Namespace, ing.Metadata.Name, cookiePathAnnot))
+		}
+	}
 
 	// --- proxy_cookie_flags in configuration-snippet → proxy-cookie-flags plugin ---
 	if snippet, ok := getAnnotation(anns, "configuration-snippet"); ok {
@@ -866,4 +882,96 @@ func parseProxyCookieFlags(snippet string) []map[string]interface{} {
 		})
 	}
 	return rules
+}
+
+// parseProxyCookiePath parses the ingress.kubernetes.io/proxy-cookie-path
+// annotation value into path_pairs for the proxy-cookie-path plugin.
+//
+// Nginx proxy_cookie_path directive format: match replacement
+// Examples:
+//
+//	~(.*) "$1"          → {match: "~(.*)", replacement: "$1"}
+//	/path1 /path2       → {match: "/path1", replacement: "/path2"}
+//
+// When the annotation is present but empty, this also considers the case
+// where the annotation is set to the empty string (which nginx ignores).
+func parseProxyCookiePath(value string) []map[string]interface{} {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+
+	// Try regex pattern first: ~<regex> <replacement>
+	// The regex may contain spaces, so we look for the first unquoted space
+	// after the regex to split.
+	if len(value) > 1 && value[0] == '~' {
+		return parseRegexCookiePath(value)
+	}
+
+	// Simple string match: /old-path /new-path
+	parts := strings.SplitN(value, " ", 2)
+	if len(parts) == 2 {
+		match := strings.TrimSpace(parts[0])
+		replacement := strings.TrimSpace(parts[1])
+		if match != "" {
+			// Remove surrounding quotes if present
+			replacement = unquotePath(replacement)
+			return []map[string]interface{}{
+				{"match": match, "replacement": replacement},
+			}
+		}
+	}
+
+	return nil
+}
+
+// parseRegexCookiePath handles regex-style proxy-cookie-path values.
+// Format: ~regex replacement (replacement may be quoted)
+func parseRegexCookiePath(value string) []map[string]interface{} {
+	// Find the regex pattern: everything after ~ up to the first space
+	// that is NOT inside the regex. Regex can contain spaces if escaped,
+	// but typically the nginx convention is no spaces in the regex itself.
+	// We look for the pattern: ~<regex> <replacement>
+	// where replacement may be quoted.
+	//
+	// Examples:
+	//   ~(.*) "$1"
+	//   ~^/api/(.*) /$1
+
+	// Strip the leading ~
+	rest := value[1:]
+
+	// Find the first space that separates regex from replacement
+	// We need to be careful: the regex itself might have spaces if it
+	// uses character classes, but in practice proxy-cookie-path patterns
+	// are simple and don't contain unescaped spaces.
+	// Strategy: split on the last unquoted space, since the regex won't
+	// have a trailing space.
+	spaceIdx := strings.LastIndex(rest, " ")
+	if spaceIdx <= 0 {
+		return nil
+	}
+
+	regex := rest[:spaceIdx]
+	replacement := rest[spaceIdx+1:]
+
+	if regex == "" {
+		return nil
+	}
+
+	replacement = unquotePath(replacement)
+
+	return []map[string]interface{}{
+		{"match": "~" + regex, "replacement": replacement},
+	}
+}
+
+// unquotePath removes surrounding double quotes from a path string,
+// as nginx uses quotes around replacements with special chars.
+func unquotePath(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
 }

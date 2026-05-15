@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "id": 3,
+    "title": "新增 proxy-cookie-path 自动转换",
+    "body": "ingress.kubernetes.io/proxy-cookie-path 注解现可自动转换为 APISIX 的 proxy-cookie-path 自定义插件配置。\n\n支持格式：\n- 正则替换：~(.*) \"$1\"\n- 精确替换：/old-path /new-path\n\n自动解析注解值，生成 ApisixPluginConfig 资源，无需手动迁移。",
+    "level": "info",
+    "date": "2026-05-14"
+  }
+]

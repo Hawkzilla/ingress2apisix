@@ -54,6 +54,7 @@
 | `configuration-snippet` 多条 rewrite | `ApisixPluginConfig` + `proxy-rewrite` | 多条 rewrite 保持顺序 |
 | `rewrite-target` + snippet rewrite | `ApisixPluginConfig` + `proxy-rewrite` | 两类 rewrite 合并到同一个插件 |
 | `configuration-snippet` 中的 `proxy_cookie_flags` | `proxy-cookie-flags` 自定义插件 | Cookie 属性处理 |
+| `proxy-cookie-path` | `proxy-cookie-path` 自定义插件 | Cookie Path 改写 |
 | `session-cookie-hash` | `session-cookie-hash` 自定义插件 | 缺失 cookie 时自动生成并写 `Set-Cookie` |
 | `affinity: cookie` | `BackendTrafficPolicy` | Cookie 会话亲和 |
 

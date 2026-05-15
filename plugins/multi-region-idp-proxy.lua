@@ -1,4 +1,9 @@
 --
+-- Licensed to the Apache Software Foundation (ASF) under one or more
+-- contributor license agreements.  See the NOTICE file distributed with
+-- this work for additional information regarding copyright ownership.
+-- The ASF licenses this file to You under the Apache License, Version 2.0
+--
 -- multi-region-idp-proxy plugin
 --
 -- Migrates an nginx configuration-snippet that rewrites request cookies for
@@ -11,8 +16,10 @@
 --   allowed_region_hosts: ["10.0.0.12", "idp.example.local"] -- optional
 --
 
-local core = require("apisix.core")
-local ngx = ngx
+local core     = require("apisix.core")
+local upstream = require("apisix.upstream")
+local ngx      = ngx
+local pairs    = pairs
 
 local plugin_name = "multi-region-idp-proxy"
 
@@ -55,9 +62,9 @@ local function cookie(name)
     return ngx.var["cookie_" .. name] or ""
 end
 
-local function set_request_header(name, value)
+local function set_request_header(ctx, name, value)
     if value and value ~= "" then
-        ngx.req.set_header(name, value)
+        core.request.set_header(ctx, name, value)
     end
 end
 
@@ -99,25 +106,42 @@ local function host_allowed(conf, host)
     return false
 end
 
-local function set_dynamic_upstream(conf, host)
+local function set_dynamic_upstream(ctx, conf, host)
     if not host_allowed(conf, host) then
         core.log.warn("multi-region-idp-proxy: blocked region host: ", host)
         return
     end
 
-    local node = host
-    if not host:find(":", 1, true) and conf.proxy_port then
-        node = host .. ":" .. conf.proxy_port
+    local port = conf.proxy_port or 443
+    if host:find(":", 1, true) then
+        -- host already contains port, e.g. "10.0.0.12:8443"
+        local h, p = core.utils.parse_addr(host)
+        host = h
+        port = p
     end
 
-    ngx.ctx.upstream = {
+    local up_conf = {
         type = "roundrobin",
         scheme = conf.proxy_scheme or "https",
         pass_host = "node",
         nodes = {
-            [node] = 1,
+            {host = host, port = port, weight = 1},
         },
     }
+
+    local ok, err = upstream.check_schema(up_conf)
+    if not ok then
+        core.log.error("multi-region-idp-proxy: invalid upstream schema: ", err)
+        return
+    end
+
+    local matched_route = ctx.matched_route
+    up_conf.parent = matched_route
+
+    local upstream_key = "multi-region-idp-proxy#route_"
+        .. matched_route.value.id .. "_" .. host .. ":" .. port
+
+    upstream.set(ctx, upstream_key, ctx.conf_version, up_conf)
 end
 
 local function handle_from_idp(ctx)
@@ -128,12 +152,12 @@ local function handle_from_idp(ctx)
         {name = "ems_dashboard_api_language", value = cookie("sp_ems_dashboard_api_language")},
     })
 
-    set_request_header("Cookie", sp_cookie)
-    set_request_header("X-Csrftoken", cookie("sp_csrftoken"))
+    set_request_header(ctx, "Cookie", sp_cookie)
+    set_request_header(ctx, "X-Csrftoken", cookie("sp_csrftoken"))
     ctx.multi_region_clear_set_cookie = true
 end
 
-local function handle_region_url(conf)
+local function handle_region_url(ctx, conf)
     local host = normalize_host(cookie("region_url"))
     if not host then
         return
@@ -146,10 +170,12 @@ local function handle_region_url(conf)
         {name = "sp_sessionid", value = cookie("sp_sessionid")},
         {name = "sp_escookie", value = cookie("sp_escookie")},
         {name = "sp_csrftoken", value = cookie("sp_csrftoken")},
+        {name = "sp_ems_dashboard_api_language", value = cookie("sp_http_language")},
+        {name = "region_label", value = "fromidp"},
     })
 
-    set_request_header("Cookie", sp_cookie)
-    set_dynamic_upstream(conf, host)
+    set_request_header(ctx, "Cookie", sp_cookie)
+    set_dynamic_upstream(ctx, conf, host)
 end
 
 function _M.rewrite(conf, ctx)
@@ -161,7 +187,7 @@ function _M.rewrite(conf, ctx)
     end
 
     if raw_cookie:find("region_url=", 1, true) then
-        handle_region_url(conf)
+        handle_region_url(ctx, conf)
     end
 end
 

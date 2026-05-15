@@ -11,10 +11,11 @@
 --
 -- Configuration:
 --   path_pairs:
---     - match: "/old-path"       -- literal path to match
+--     - cookie: "sessionid"      -- (optional) only rewrite this cookie
+--       match: "/old-path"       -- literal path to match
 --       replacement: "/new-path" -- replacement path
 --     - match: "~ ^/api/(.*)"    -- regex match (~ prefix indicates regex)
---       replacement: "/$1"
+--       replacement: "/$1"       -- no cookie = match all cookies
 --
 
 local core   = require("apisix.core")
@@ -34,6 +35,11 @@ local schema = {
             items = {
                 type = "object",
                 properties = {
+                    cookie = {
+                        type = "string",
+                        minLength = 1,
+                        description = "Cookie name to match; omit to match all cookies",
+                    },
                     match = {
                         type = "string",
                         minLength = 1,
@@ -59,6 +65,19 @@ local _M = {
 
 function _M.check_schema(conf)
     return core.schema.check(schema, conf)
+end
+
+-- Extract cookie name from a Set-Cookie header value.
+-- "sessionid=abc123; Path=/; HttpOnly" → "sessionid"
+local function extract_cookie_name(header_value)
+    if not header_value or header_value == "" then
+        return nil
+    end
+    local name = header_value:match("^%s*([^=;]+)")
+    if name then
+        name = name:match("^%s*(.-)%s*$")
+    end
+    return name
 end
 
 -- Parse a Set-Cookie header value into the cookie portion and attributes.
@@ -106,17 +125,28 @@ local function extract_regex(pattern)
     return regex or pattern
 end
 
+-- Check if a pair should apply to the given cookie name.
+-- If pair.cookie is nil/empty, it matches all cookies.
+local function matches_cookie(pair, cookie_name)
+    local target = pair.cookie
+    if not target or target == "" then
+        return true  -- no filter, matches all
+    end
+    return cookie_name == target
+end
+
 -- Apply path rewriting to a single Set-Cookie value
 local function rewrite_cookie_path(value, conf)
+    local cookie_name = extract_cookie_name(value)
     local parts, has_path, path_idx = parse_set_cookie(value)
     if not parts then
         return value
     end
 
-    -- Extract current path value
+    -- Extract current path value (case-insensitive: Path, PATH, path)
     local current_path = nil
     if has_path and path_idx then
-        current_path = parts[path_idx]:match("^path=(.*)$")
+        current_path = parts[path_idx]:match("^[Pp][Aa][Tt][Hh]=(.*)$")
     end
 
     -- If no path attribute, no rewrite needed
@@ -127,24 +157,27 @@ local function rewrite_cookie_path(value, conf)
     local new_path = nil
 
     for _, pair in ipairs(conf.path_pairs) do
-        local match_pattern = pair.match
-        local replacement = pair.replacement
+        -- Skip if this pair targets a different cookie
+        if matches_cookie(pair, cookie_name) then
+            local match_pattern = pair.match
+            local replacement = pair.replacement
 
-        if is_regex_pattern(match_pattern) then
-            -- Regex match
-            local regex = extract_regex(match_pattern)
-            local from, to, err = re.sub(current_path, regex, replacement, "jo")
-            if err then
-                core.log.error("proxy-cookie-path: regex error: ", err)
-            elseif from ~= current_path then
-                new_path = from
-                break
-            end
-        else
-            -- Simple string match
-            if current_path == match_pattern then
-                new_path = replacement
-                break
+            if is_regex_pattern(match_pattern) then
+                -- Regex match
+                local regex = extract_regex(match_pattern)
+                local from, to, err = re.sub(current_path, regex, replacement, "jo")
+                if err then
+                    core.log.error("proxy-cookie-path: regex error: ", err)
+                elseif from ~= current_path then
+                    new_path = from
+                    break
+                end
+            else
+                -- Simple string match
+                if current_path == match_pattern then
+                    new_path = replacement
+                    break
+                end
             end
         end
     end
@@ -158,28 +191,21 @@ local function rewrite_cookie_path(value, conf)
 end
 
 function _M.header_filter(conf, ctx)
-    -- Get all Set-Cookie headers
-    local set_cookie_headers = core.response.headers["Set-Cookie"]
+    local set_cookie_headers = ngx.header["Set-Cookie"]
     if not set_cookie_headers then
         return
     end
 
-    -- In OpenResty, multiple Set-Cookie headers are returned as a table
     if type(set_cookie_headers) == "table" then
         local new_headers = {}
         for i, val in ipairs(set_cookie_headers) do
             new_headers[i] = rewrite_cookie_path(val, conf)
         end
-        -- Remove all Set-Cookie headers and re-add the modified ones
-        core.response.headers["Set-Cookie"] = nil
-        for _, val in ipairs(new_headers) do
-            core.response.add_header("Set-Cookie", val)
-        end
+        ngx.header["Set-Cookie"] = new_headers
     else
-        -- Single Set-Cookie header
         local new_val = rewrite_cookie_path(set_cookie_headers, conf)
         if new_val ~= set_cookie_headers then
-            core.response.headers["Set-Cookie"] = new_val
+            ngx.header["Set-Cookie"] = new_val
         end
     end
 end

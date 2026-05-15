@@ -766,6 +766,247 @@ ingress2apisix -f ingress.yaml
 # 2. 独立的 ApisixPluginConfig 资源（含 proxy-cookie-flags 规则）
 ```
 
+### 4.1.4.3 Cookie Path 改写
+
+#### 相关 ingress-nginx 注解
+
+| ingress-nginx 注解 | 说明 |
+| --- | --- |
+| `ingress.kubernetes.io/proxy-cookie-path: ~(.*) "$1"` | 对响应中 `Set-Cookie` 头的 `Path` 属性进行正则或精确替换。等价于 nginx 的 `proxy_cookie_path` 指令。 |
+
+nginx 原生 `proxy_cookie_path` 指令说明：
+
+```nginx
+# 精确替换：将 Set-Cookie 中 Path=/old-path 改为 /new-path
+proxy_cookie_path /old-path /new-path;
+
+# 正则替换：将 Path=/api/xxx 改为 /xxx
+proxy_cookie_path ~^/api/(.*) /$1;
+
+# 匹配所有路径（通常用于统一加前缀或尾部斜杠）
+proxy_cookie_path ~(.*) "$1";
+```
+
+#### 背景
+
+`proxy_cookie_path` 在 nginx 中的作用域是 `http`、`server`、`location`，它对响应中**所有** `Set-Cookie` 头的 `Path` 属性进行统一改写。nginx 本身没有按 cookie 名称筛选的能力——要么全部改，要么不改。
+
+本插件在此基础上扩展了 `cookie` 字段，可以**按 cookie 名称精确控制**哪些 cookie 需要改写 Path，哪些保持不变。
+
+#### APISIX 迁移配置示例
+
+该能力在 APISIX 中通过自定义 `proxy-cookie-path` Lua 插件实现。
+
+**插件配置说明**
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `path_pairs` | 是 | 路径替换规则数组，按顺序匹配，命中即停止 |
+| `path_pairs[].match` | 是 | 匹配模式。精确路径如 `/old-path`；正则前缀 `~`，如 `~(.*)`、`~^/api/(.*)` |
+| `path_pairs[].replacement` | 是 | 替换值。支持正则分组引用如 `$1`、`$2` |
+| `path_pairs[].cookie` | 否 | 限定只对指定 cookie 名称生效。省略或为空则匹配所有 cookie |
+
+**插件行为**
+
+- 在 `header_filter` 阶段运行，改写的是**响应**方向的 `Set-Cookie` 头
+- `Path` 属性匹配不区分大小写（`Path`、`path`、`PATH` 均可识别）
+- 多条规则按数组顺序依次匹配，**第一条命中的规则生效**，后续规则不再执行
+- 如果 `Set-Cookie` 中没有 `Path` 属性，该 cookie 不受影响
+- 如果没有任何规则命中，cookie 保持原样
+
+---
+
+**场景 A：对所有 cookie 做正则替换**
+
+```yaml
+apiVersion: apisix.apache.org/v2
+kind: ApisixPluginConfig
+metadata:
+  name: cookie-path-all
+  namespace: default
+spec:
+  ingressClassName: apisix
+  plugins:
+    - name: proxy-cookie-path
+      enable: true
+      config:
+        path_pairs:
+          - match: "~(.*)"
+            replacement: "$1"
+```
+
+效果：所有 `Set-Cookie` 中的 `Path` 值原样保留（此配置通常用于后续扩展时作为占位）。
+
+---
+
+**场景 B：精确路径替换**
+
+```yaml
+config:
+  path_pairs:
+    - match: "/old-path"
+      replacement: "/new-path"
+```
+
+效果：
+
+| 改写前 | 改写后 |
+| --- | --- |
+| `Set-Cookie: sid=abc; Path=/old-path` | `Set-Cookie: sid=abc; Path=/new-path` |
+| `Set-Cookie: sid=abc; Path=/other` | `Set-Cookie: sid=abc; Path=/other`（不匹配，不变） |
+| `Set-Cookie: sid=abc` | `Set-Cookie: sid=abc`（无 Path，不变） |
+
+---
+
+**场景 C：正则提取路径子串**
+
+```yaml
+config:
+  path_pairs:
+    - match: "~^/api/(.*)"
+      replacement: "/$1"
+```
+
+效果：
+
+| 改写前 | 改写后 |
+| --- | --- |
+| `Set-Cookie: sid=abc; Path=/api/v1` | `Set-Cookie: sid=abc; Path=/v1` |
+| `Set-Cookie: sid=abc; Path=/api/users/123` | `Set-Cookie: sid=abc; Path=/users/123` |
+| `Set-Cookie: sid=abc; Path=/other` | 不变（正则不匹配） |
+
+---
+
+**场景 D：按 cookie 名称精确控制（扩展能力，nginx 原生不支持）**
+
+```yaml
+config:
+  path_pairs:
+    # 只对 sessionid cookie 做路径替换
+    - cookie: "sessionid"
+      match: "~^/api/(.*)"
+      replacement: "/$1"
+    # 对其他所有 cookie 做不同的替换
+    - match: "/old-path"
+      replacement: "/new-path"
+```
+
+效果：
+
+| Cookie | 改写前 Path | 改写后 Path | 命中规则 |
+| --- | --- | --- | --- |
+| `sessionid` | `/api/v1` | `/v1` | 第 1 条（指定 cookie + 正则） |
+| `sessionid` | `/other` | `/other` | 第 1 条匹配了 cookie 但正则不匹配，跳过；第 2 条不匹配，不变 |
+| `token` | `/old-path` | `/new-path` | 第 1 条 cookie 不匹配，跳过；第 2 条命中 |
+| `token` | `/api/v1` | `/api/v1` | 两条都不命中，不变 |
+
+---
+
+**场景 E：多条规则组合**
+
+```yaml
+config:
+  path_pairs:
+    # 第一条：sessionid 只改 /api 下的路径
+    - cookie: "sessionid"
+      match: "~^/api/(.*)"
+      replacement: "/$1"
+    # 第二条：csrftoken 只改精确路径
+    - cookie: "csrftoken"
+      match: "/dashboard"
+      replacement: "/app"
+    # 第三条：其余 cookie 统一去掉尾部斜杠
+    - match: "~^(.*)/$"
+      replacement: "$1"
+```
+
+---
+
+#### 自动转换工具处理逻辑
+
+`ingress2apisix` 转换器会自动解析 `ingress.kubernetes.io/proxy-cookie-path` 注解值，生成 `ApisixPluginConfig`：
+
+**输入 Ingress：**
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: my-app
+  annotations:
+    ingress.kubernetes.io/proxy-cookie-path: ~(.*) "$1"
+spec:
+  rules:
+    - host: app.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: my-svc
+                port:
+                  number: 80
+```
+
+**自动生成的输出：**
+
+1. `ApisixPluginConfig` 资源：
+
+```yaml
+apiVersion: apisix.apache.org/v2
+kind: ApisixPluginConfig
+metadata:
+  name: my-app-plugins
+  namespace: <namespace>
+spec:
+  ingressClassName: apisix
+  plugins:
+    - name: proxy-cookie-path
+      enable: true
+      config:
+        path_pairs:
+          - match: "~(.*)"
+            replacement: "$1"
+```
+
+2. 转换后的 Ingress 自动添加引用：
+
+```yaml
+metadata:
+  annotations:
+    k8s.apisix.apache.org/plugin-config-name: my-app-plugins
+```
+
+**注意：** 自动转换生成的规则**不带 `cookie` 字段**，即对所有 cookie 生效（与 nginx 原生行为一致）。如果需要按 cookie 名称控制，需在生成后手动编辑 `ApisixPluginConfig` 添加 `cookie` 字段。
+
+**验证方法**
+
+```bash
+# 使用 httpbin 的 /response-headers 端点返回自定义 Set-Cookie
+# 观察 Path 是否被改写
+
+# 精确替换测试
+curl -v -H "Host: app.example.com" \
+  'http://<APISIX>/response-headers?Set-Cookie=sid%3Dabc%3B%20Path%3D/old-path'
+
+# 正则替换测试
+curl -v -H "Host: app.example.com" \
+  'http://<APISIX>/response-headers?Set-Cookie=sid%3Dabc%3B%20Path%3D/api/v1'
+
+# 多 cookie 测试（验证 cookie 字段过滤）
+curl -v -H "Host: app.example.com" \
+  'http://<APISIX>/response-headers?Set-Cookie=sessionid%3Dabc%3B%20Path%3D/api/v1&Set-Cookie=token%3Dxyz%3B%20Path%3D/api/v1'
+```
+
+```bash
+ingress2apisix convert -f ingress.yaml
+
+# 输出自动包含：
+# 1. 转换后的 Ingress（含 plugin-config-name 注解，原注解已移除）
+# 2. 独立的 ApisixPluginConfig 资源（含 proxy-cookie-path 规则）
+```
+
 ### 4.1.5 头部转化
 
 #### 4.1.5.1 相关 ingress-nginx 注解

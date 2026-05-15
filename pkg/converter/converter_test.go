@@ -2314,3 +2314,160 @@ func TestParseProxyCookieFlags(t *testing.T) {
 		})
 	}
 }
+
+func TestParseProxyCookiePath(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantLen int
+		want0M  string
+		want0R  string
+	}{
+		{
+			name:    "regex with quoted replacement",
+			value:   `~(.*) "$1"`,
+			wantLen: 1,
+			want0M:  `~(.*)`,
+			want0R:  "$1",
+		},
+		{
+			name:    "regex without quotes",
+			value:   `~^/api/(.*) /$1`,
+			wantLen: 1,
+			want0M:  `~^/api/(.*)`,
+			want0R:  "/$1",
+		},
+		{
+			name:    "literal match",
+			value:   "/old-path /new-path",
+			wantLen: 1,
+			want0M:  "/old-path",
+			want0R:  "/new-path",
+		},
+		{
+			name:    "empty value",
+			value:   "",
+			wantLen: 0,
+		},
+		{
+			name:    "whitespace only",
+			value:   "   ",
+			wantLen: 0,
+		},
+		{
+			name:    "regex with complex pattern",
+			value:   `~(?i)/cinder_dashboard_api/(.*) "/$1"`,
+			wantLen: 1,
+			want0M:  `~(?i)/cinder_dashboard_api/(.*)`,
+			want0R:  "/$1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseProxyCookiePath(tt.value)
+			if len(got) != tt.wantLen {
+				t.Fatalf("parseProxyCookiePath(%q): got len %d, want %d", tt.value, len(got), tt.wantLen)
+			}
+			if tt.wantLen > 0 {
+				if got[0]["match"] != tt.want0M {
+					t.Errorf("got match=%q, want %q", got[0]["match"], tt.want0M)
+				}
+				if got[0]["replacement"] != tt.want0R {
+					t.Errorf("got replacement=%q, want %q", got[0]["replacement"], tt.want0R)
+				}
+			}
+		})
+	}
+}
+
+func TestConvert_ProxyCookiePath_ProducesPluginConfig(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("cookie-path", "default",
+		map[string]string{
+			`ingress.kubernetes.io/proxy-cookie-path`: `~(.*) "$1"`,
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+
+	pc := result.PluginConfigs[0]
+	if len(pc.Spec.Plugins) != 1 {
+		t.Fatalf("expected 1 plugin, got %d", len(pc.Spec.Plugins))
+	}
+
+	p := pc.Spec.Plugins[0]
+	if p.Name != "proxy-cookie-path" {
+		t.Errorf("expected plugin name proxy-cookie-path, got %s", p.Name)
+	}
+	if !p.Enable {
+		t.Error("expected plugin to be enabled")
+	}
+
+	cfg := p.Config.(map[string]interface{})
+	pathPairs, ok := cfg["path_pairs"].([]map[string]interface{})
+	if !ok {
+		t.Fatalf("path_pairs is not []map[string]interface{}: %T", cfg["path_pairs"])
+	}
+	if len(pathPairs) != 1 {
+		t.Fatalf("expected 1 path_pair, got %d", len(pathPairs))
+	}
+	pair := pathPairs[0]
+	if pair["match"] != "~(.*)" {
+		t.Errorf("expected match=~(.*), got %q", pair["match"])
+	}
+	if pair["replacement"] != "$1" {
+		t.Errorf("expected replacement=$1, got %q", pair["replacement"])
+	}
+}
+
+func TestConvert_ProxyCookiePath_NoManualWarning(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("cookie-path-no-warn", "default",
+		map[string]string{
+			`ingress.kubernetes.io/proxy-cookie-path`: `~(.*) "$1"`,
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "proxy-cookie-path") {
+			t.Errorf("should not warn about proxy-cookie-path: %s", w)
+		}
+	}
+}
+
+func TestConvert_ProxyCookiePath_InvalidValue_Warns(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("cookie-path-invalid", "default",
+		map[string]string{
+			`ingress.kubernetes.io/proxy-cookie-path`: `invalid_value`,
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "无法解析") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected a warning about unparseable proxy-cookie-path value")
+	}
+	if len(result.PluginConfigs) != 0 {
+		t.Errorf("expected no PluginConfigs for invalid value, got %d", len(result.PluginConfigs))
+	}
+}

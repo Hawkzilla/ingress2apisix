@@ -249,7 +249,7 @@ func TestClassifyAnnotation(t *testing.T) {
 		{"enable-cors", StatusConverted},
 		{"limit-rps", StatusPluginConfig},
 		{"session-cookie-hash", StatusCustomPlugin},
-		{"proxy-cookie-path", StatusManual},
+		{"proxy-cookie-path", StatusPluginConfig},
 		{"affinity", StatusManual},
 		{"totally-unknown-key", StatusUnknown},
 	}

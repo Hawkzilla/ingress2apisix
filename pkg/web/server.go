@@ -65,6 +65,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/docs/annotations", s.handleDocAnnotations)
 	s.mux.HandleFunc("/api/docs/usage", s.handleDocUsage)
 	s.mux.HandleFunc("/api/docs/webui", s.handleDocWebUI)
+	s.mux.HandleFunc("/api/docs/multi-region-idp-proxy", s.handleDocMultiRegionIDP)
 	s.mux.HandleFunc("/api/feedback", s.handleFeedback)
 	s.mux.HandleFunc("/api/announcements", s.handleAnnouncements)
 	s.RegisterUploadRoutes()
@@ -519,6 +520,10 @@ func (s *Server) handleDocUsage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDocWebUI(w http.ResponseWriter, r *http.Request) {
 	serveDoc(w, "webui.md")
+}
+
+func (s *Server) handleDocMultiRegionIDP(w http.ResponseWriter, r *http.Request) {
+	serveDoc(w, "multi-region-idp-proxy.md")
 }
 
 func serveDoc(w http.ResponseWriter, name string) {

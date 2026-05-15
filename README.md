@@ -63,6 +63,7 @@ Use APISIX-native annotations whenever possible. Generate `ApisixPluginConfig` o
 | multiple rewrites in `configuration-snippet` | `ApisixPluginConfig` + `proxy-rewrite` | Keeps rewrite order |
 | `rewrite-target` plus snippet rewrite | `ApisixPluginConfig` + `proxy-rewrite` | Merges both rewrite sources |
 | `proxy_cookie_flags` in `configuration-snippet` | custom `proxy-cookie-flags` plugin | Set-Cookie flag handling |
+| `proxy-cookie-path` | custom `proxy-cookie-path` plugin | Set-Cookie Path rewriting |
 | `session-cookie-hash` | custom `session-cookie-hash` plugin | Generates/uses session cookie hash |
 | `affinity: cookie` | `BackendTrafficPolicy` | Cookie-based session affinity |
 

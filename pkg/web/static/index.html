@@ -704,6 +704,7 @@ mark.search-highlight {
 <div class="tab-content" id="tab-docs">
   <div class="toolbar">
     <button class="btn btn-sm active" id="doc-btn-migration" onclick="loadDoc('migration')">&#128214; EOS 迁移指南</button>
+    <button class="btn btn-sm" id="doc-btn-multi-region-idp-proxy" onclick="loadDoc('multi-region-idp-proxy')">&#127758; 多区域 IDP 代理插件</button>
     <button class="btn btn-sm" id="doc-btn-webui" onclick="loadDoc('webui')">&#128444; 页面使用指南（当前）</button>
     <button class="btn btn-sm" id="doc-btn-usage" onclick="loadDoc('usage')">&#128209; CLI 使用指南</button>
     <button class="btn btn-sm" id="doc-btn-annotations" onclick="loadDoc('annotations')">&#128218; APISIX-INGRESS 注解参考</button>
@@ -1225,6 +1226,7 @@ async function loadDoc(name) {
   document.getElementById('doc-search-count').textContent = '';
   currentDoc = name;
   document.getElementById('doc-btn-migration').classList.toggle('active', name === 'migration');
+  document.getElementById('doc-btn-multi-region-idp-proxy').classList.toggle('active', name === 'multi-region-idp-proxy');
   document.getElementById('doc-btn-webui').classList.toggle('active', name === 'webui');
   document.getElementById('doc-btn-usage').classList.toggle('active', name === 'usage');
   document.getElementById('doc-btn-annotations').classList.toggle('active', name === 'annotations');

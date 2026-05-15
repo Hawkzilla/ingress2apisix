@@ -423,8 +423,8 @@ func classifyAnnotation(fullKey, suffix string) AnnotationFinding {
 		f.Detail = "→ 单条 rewrite 用原生注解，多条用 ApisixPluginConfig + proxy-rewrite"
 		return f
 	case "proxy-cookie-path":
-		f.Status = StatusManual
-		f.Detail = "→ 无等价 APISIX 插件，需手动评估 Cookie Path 改写需求"
+		f.Status = StatusPluginConfig
+		f.Detail = "→ ApisixPluginConfig + proxy-cookie-path 插件"
 		return f
 	case "session-cookie-hash":
 		f.Status = StatusCustomPlugin
