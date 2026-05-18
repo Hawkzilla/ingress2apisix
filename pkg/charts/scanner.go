@@ -307,7 +307,6 @@ var knownManualInfo = map[string]string{
 	"auth-tls-secret":        "需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6",
 	"auth-tls-verify-client": "需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6",
 	"auth-secret":            "需 ApisixConsumer CRD 配合 auth-type 注解，参见迁移文档 4.1.8",
-	"proxy-body-size":        "需全局配置 nginx_config.http.client_max_body_size，参见迁移文档 3.1",
 	"proxy-buffer-size":      "需全局配置 nginx_config.http_configuration_snippet.proxy_buffer_size，参见迁移文档 3.1",
 	"proxy-buffers-number":   "需全局配置 nginx_config.http_configuration_snippet.proxy_buffers，参见迁移文档 3.1",
 }
@@ -417,6 +416,10 @@ func classifyAnnotation(fullKey, suffix string) AnnotationFinding {
 	case "limit-connections":
 		f.Status = StatusPluginConfig
 		f.Detail = "→ ApisixPluginConfig + limit-conn 插件"
+		return f
+	case "proxy-body-size":
+		f.Status = StatusPluginConfig
+		f.Detail = "→ ApisixPluginConfig + client-control 插件"
 		return f
 	case "configuration-snippet":
 		f.Status = StatusPluginConfig

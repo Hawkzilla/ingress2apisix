@@ -1677,14 +1677,24 @@ func TestWarning_ProxyBodySize(t *testing.T) {
 
 	result := c.Convert(ing)
 
-	found := false
+	// proxy-body-size is now auto-converted to client-control plugin, no warning expected
 	for _, w := range result.Warnings {
-		if strings.Contains(w, "proxy-body-size") && strings.Contains(w, "client_max_body_size") {
-			found = true
+		if strings.Contains(w, "proxy-body-size") {
+			t.Errorf("proxy-body-size should no longer generate a warning, got: %v", w)
 		}
 	}
-	if !found {
-		t.Errorf("expected warning for proxy-body-size, got warnings: %v", result.Warnings)
+
+	// Should produce a PluginConfig with client-control plugin (0 bytes)
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	p := result.PluginConfigs[0].Spec.Plugins[0]
+	if p.Name != "client-control" {
+		t.Errorf("expected client-control plugin, got '%s'", p.Name)
+	}
+	cfg := p.Config.(map[string]interface{})
+	if cfg["max_body_size"] != int64(0) {
+		t.Errorf("expected max_body_size=0, got %v", cfg["max_body_size"])
 	}
 }
 
@@ -2469,5 +2479,53 @@ func TestConvert_ProxyCookiePath_InvalidValue_Warns(t *testing.T) {
 	}
 	if len(result.PluginConfigs) != 0 {
 		t.Errorf("expected no PluginConfigs for invalid value, got %d", len(result.PluginConfigs))
+	}
+}
+
+func TestConvert_ProxyBodySize_ProducesPluginConfig(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("body-size", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/proxy-body-size": "10m",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	pc := result.PluginConfigs[0]
+	if len(pc.Spec.Plugins) != 1 {
+		t.Fatalf("expected 1 plugin, got %d", len(pc.Spec.Plugins))
+	}
+	p := pc.Spec.Plugins[0]
+	if p.Name != "client-control" {
+		t.Errorf("expected client-control plugin, got '%s'", p.Name)
+	}
+	if !p.Enable {
+		t.Error("expected client-control to be enabled")
+	}
+	cfg, ok := p.Config.(map[string]interface{})
+	if !ok {
+		t.Fatal("expected plugin config to be a map")
+	}
+	if cfg["max_body_size"] != int64(10485760) {
+		t.Errorf("expected max_body_size=10485760, got %v", cfg["max_body_size"])
+	}
+
+	// Should NOT generate a warning
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "proxy-body-size") {
+			t.Errorf("should not warn about proxy-body-size, got: %v", w)
+		}
+	}
+
+	// PluginConfig should be linked
+	out := result.Ingresses[0].(ingress.Ingress)
+	if out.Metadata.Annotations["k8s.apisix.apache.org/plugin-config-name"] != pc.Metadata.Name {
+		t.Error("client-control PluginConfig should be linked via annotation")
 	}
 }

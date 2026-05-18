@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/ingress2apisix/pkg/apisix"
@@ -187,6 +188,8 @@ var handledAnnotations = map[string]bool{
 	"limit-rps":         true,
 	"limit-rpm":         true,
 	"limit-connections": true,
+	// proxy-body-size → client-control plugin
+	"proxy-body-size": true,
 }
 
 // knownManualAnnotations are recognized but require manual intervention.
@@ -199,7 +202,6 @@ var knownManualAnnotations = map[string]string{
 	"auth-tls-secret":        "需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6",
 	"auth-tls-verify-client": "需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6",
 	"auth-secret":            "需 ApisixConsumer CRD 配合 auth-type 注解，参见迁移文档 4.1.8",
-	"proxy-body-size":        "需全局配置 nginx_config.http.client_max_body_size，参见迁移文档 3.1",
 	"proxy-buffer-size":      "需全局配置 nginx_config.http_configuration_snippet.proxy_buffer_size，参见迁移文档 3.1",
 	"proxy-buffers-number":   "需全局配置 nginx_config.http_configuration_snippet.proxy_buffers，参见迁移文档 3.1",
 }
@@ -504,6 +506,24 @@ func (c *Converter) buildPluginConfig(ing ingress.Ingress, ns string) (*apisix.A
 				"rejected_code": "503",
 			},
 		})
+	}
+
+	// --- proxy-body-size → client-control plugin ---
+	if v, ok := getAnnotation(anns, "proxy-body-size"); ok && v != "" {
+		parsedBytes, err := parseBodySize(v)
+		if err != nil {
+			warnings = append(warnings,
+				fmt.Sprintf("[%s/%s] proxy-body-size=%q 无法解析为有效的字节数，跳过自动转换: %v",
+					ing.Metadata.Namespace, ing.Metadata.Name, v, err))
+		} else {
+			plugins = append(plugins, apisix.Plugin{
+				Name:   "client-control",
+				Enable: true,
+				Config: map[string]interface{}{
+					"max_body_size": parsedBytes,
+				},
+			})
+		}
 	}
 
 	// --- Auth-secret warning (needs ApisixConsumer CRD) ---
@@ -974,4 +994,37 @@ func unquotePath(s string) string {
 		return s[1 : len(s)-1]
 	}
 	return s
+}
+
+// parseBodySize parses a nginx proxy-body-size value (e.g. "10m", "1g", "1k", "0")
+// into bytes. Suffixes: k/K = 1024, m/M = 1024*1024, g/G = 1024*1024*1024.
+func parseBodySize(val string) (int64, error) {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return 0, fmt.Errorf("empty value")
+	}
+
+	suffix := val[len(val)-1]
+	switch {
+	case suffix == 'k' || suffix == 'K':
+		n, err := strconv.ParseInt(val[:len(val)-1], 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return n * 1024, nil
+	case suffix == 'm' || suffix == 'M':
+		n, err := strconv.ParseInt(val[:len(val)-1], 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return n * 1024 * 1024, nil
+	case suffix == 'g' || suffix == 'G':
+		n, err := strconv.ParseInt(val[:len(val)-1], 10, 64)
+		if err != nil {
+			return 0, err
+		}
+		return n * 1024 * 1024 * 1024, nil
+	default:
+		return strconv.ParseInt(val, 10, 64)
+	}
 }

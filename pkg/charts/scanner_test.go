@@ -193,8 +193,11 @@ spec:
 	if report.IngressFiles != 1 {
 		t.Errorf("expected 1 ingress file (.yaml.tpl), got %d", report.IngressFiles)
 	}
-	if report.Manual != 1 {
-		t.Errorf("expected 1 manual (proxy-body-size), got %d", report.Manual)
+	if report.Manual != 0 {
+		t.Errorf("expected 0 manual (proxy-body-size is now handled), got %d", report.Manual)
+	}
+	if report.PluginConfig != 1 {
+		t.Errorf("expected 1 plugin config (proxy-body-size → client-control), got %d", report.PluginConfig)
 	}
 }
 

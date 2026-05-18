@@ -505,6 +505,52 @@ mark.search-highlight {
 .fb-pagination-btn:hover { border-color: var(--text-muted); }
 .fb-pagination-btn:disabled { opacity: 0.4; cursor: default; }
 .fb-pagination-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* Modal */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  z-index: 1000; justify-content: center; align-items: center;
+}
+.modal-overlay.visible { display: flex; }
+.modal-box {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  width: 90vw; max-width: 900px; max-height: 85vh; display: flex; flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
+}
+.modal-header h3 { margin: 0; font-size: 15px; color: var(--text); }
+.modal-close {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  font-size: 20px; padding: 0 4px; line-height: 1;
+}
+.modal-close:hover { color: var(--text); }
+.modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+.modal-body textarea {
+  width: 100%; min-height: 200px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+  font-family: var(--mono); font-size: 12px; resize: vertical; box-sizing: border-box;
+}
+.modal-body textarea:focus { border-color: var(--accent); outline: none; }
+.modal-result {
+  margin-top: 12px; padding: 12px; border-radius: 8px; font-size: 12px;
+  line-height: 1.6; max-height: 300px; overflow-y: auto;
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+}
+.modal-result .ann-tag {
+  display: inline-block; padding: 2px 8px; margin: 2px; border-radius: 4px;
+  font-size: 11px; font-family: var(--mono);
+}
+.ann-tag-handled { background: rgba(46,160,67,0.15); color: #3fb950; }
+.ann-tag-manual  { background: rgba(210,153,34,0.15); color: #d29922; }
+.ann-tag-unknown { background: rgba(248,81,73,0.15); color: #f85149; }
+.ann-tag-label { font-size: 10px; color: var(--text-muted); margin-right: 4px; }
+.modal-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 12px 20px; border-top: 1px solid var(--border);
+}
 </style>
 </head>
 <body>
@@ -627,9 +673,10 @@ mark.search-highlight {
   <div class="editors">
     <div class="editor-pane">
       <div class="editor-header">
-        <span class="label"><span class="dot dot-input"></span> Ingress YAML</span>
+        <span class="label"><span class="dot dot-input"></span> Ingress YAML / JSON</span>
         <button class="btn btn-sm" onclick="document.getElementById('check-upload').click()">Upload</button>
-        <input type="file" id="check-upload" class="hidden" accept=".yaml,.yml" onchange="handleFileUpload(this, 'check-input')">
+        <input type="file" id="check-upload" class="hidden" accept=".yaml,.yml,.json" onchange="handleFileUpload(this, 'check-input')">
+        <button class="btn btn-sm" onclick="showPasteJsonModal()" title="粘贴 JSON 提取 nginx 注解">Paste JSON</button>
       </div>
       <div class="editor-body"><textarea id="check-input"></textarea></div>
     </div>
@@ -1692,6 +1739,316 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
 });
+
+/* --- Paste JSON Modal --- */
+const NGINX_ANN_PREFIXES = ['nginx.ingress.kubernetes.io/', 'ingress.kubernetes.io/'];
+
+const ANNOTATION_STATUS = {
+  // handled (auto-convertible)
+  'enable-cors': 'handled', 'cors-allow-origin': 'handled', 'cors-allow-methods': 'handled',
+  'cors-allow-headers': 'handled', 'ssl-redirect': 'handled', 'force-ssl-redirect': 'handled',
+  'rewrite-target': 'handled', 'proxy-connect-timeout': 'handled', 'proxy-send-timeout': 'handled',
+  'proxy-read-timeout': 'handled', 'backend-protocol': 'handled', 'whitelist-source-range': 'handled',
+  'auth-url': 'handled', 'auth-response-headers': 'handled', 'websocket-services': 'handled',
+  'use-regex': 'handled', 'auth-type': 'handled', 'auth-realm': 'handled',
+  'session-cookie-hash': 'handled', 'proxy-redirect-from': 'handled', 'proxy-redirect-to': 'handled',
+  'configuration-snippet': 'handled', 'proxy-cookie-path': 'handled',
+  'limit-rps': 'handled', 'limit-rpm': 'handled', 'limit-connections': 'handled',
+  'proxy-body-size': 'handled',
+  'limit-multiplier': 'manual',
+  // manual
+  'custom-http-errors': 'manual', 'affinity': 'manual', 'session-cookie-name': 'manual',
+  'upstream-hash-by': 'manual', 'auth-tls-secret': 'manual', 'auth-tls-verify-client': 'manual',
+  'auth-secret': 'manual', 'proxy-buffer-size': 'manual',
+  'proxy-buffers-number': 'manual',
+  // known extra (Check tab)
+  'canary': 'manual', 'canary-weight': 'manual', 'canary-by-header': 'manual',
+  'canary-by-header-value': 'manual', 'canary-by-cookie': 'manual',
+  'ssl-passthrough': 'manual', 'ssl-protocols': 'manual', 'ssl-ciphers': 'manual',
+  'hsts': 'manual', 'hsts-max-age': 'manual', 'hsts-include-subdomains': 'manual', 'hsts-preload': 'manual',
+  'permanent-redirect': 'manual', 'temporal-redirect': 'manual', 'app-root': 'manual',
+  'proxy-http-version': 'manual', 'connection-proxy-header': 'manual', 'x-forwarded-prefix': 'manual',
+  'service-upstream': 'manual', 'upstream-keepalive-connections': 'manual',
+  'upstream-keepalive-requests': 'manual', 'upstream-keepalive-timeout': 'manual',
+  'denylist-source-range': 'manual', 'enable-owasp-modsecurity-crc': 'manual',
+  'server-snippet': 'manual', 'disable-access-log': 'manual', 'preserve-trailing-slash': 'manual',
+  'enable-opentracing': 'manual', 'enable-influxdb': 'manual', 'mirror-target': 'manual',
+  'mirror-path': 'manual', 'satisfy': 'manual', 'retry-non-idempotent': 'manual',
+};
+
+function showPasteJsonModal() {
+  document.getElementById('paste-json-overlay').classList.add('visible');
+  const ta = document.getElementById('paste-json-input');
+  ta.value = '';
+  const resultDiv = document.getElementById('paste-json-result');
+  resultDiv.innerHTML = '';
+  resultDiv.style.display = 'none';
+  setTimeout(() => ta.focus(), 50);
+}
+
+function closePasteJsonModal() {
+  document.getElementById('paste-json-overlay').classList.remove('visible');
+}
+
+function classifyAnnotation(fullKey) {
+  for (const prefix of NGINX_ANN_PREFIXES) {
+    if (fullKey.startsWith(prefix)) {
+      const suffix = fullKey.slice(prefix.length);
+      const status = ANNOTATION_STATUS[suffix];
+      return { suffix, status: status || 'unknown' };
+    }
+  }
+  return null;
+}
+
+function parseAnnotationsFromJson() {
+  const raw = document.getElementById('paste-json-input').value.trim();
+  const resultDiv = document.getElementById('paste-json-result');
+  if (!raw) { resultDiv.style.display='block'; resultDiv.innerHTML = '<span style="color:var(--text-muted)">请粘贴 JSON</span>'; return; }
+
+  let items = [];
+
+  // Strategy 1: Try standard JSON parse (single object or array)
+  try {
+    const data = JSON.parse(raw);
+    items = collectItems(data);
+  } catch(e) {
+    // Strategy 2: Multiple concatenated JSON objects
+    const chunks = splitMultiJson(raw);
+    for (const chunk of chunks) {
+      try {
+        const obj = JSON.parse(chunk);
+        items = items.concat(collectItems(obj));
+      } catch(e2) { /* skip */ }
+    }
+  }
+
+  if (items.length === 0) {
+    resultDiv.style.display='block'; resultDiv.innerHTML = '<span style="color:#d29922">未找到包含 annotations 的资源</span>';
+    return;
+  }
+
+  // Collect all findings per item, track counts
+  let totalConverted = 0, totalPlugin = 0, totalCustom = 0, totalManual = 0, totalUnknown = 0;
+  let totalAnn = 0;
+  const statusMap = { handled: 'CONVERTED', manual: 'MANUAL', unknown: 'UNKNOWN' };
+  const detailMap = {
+    'enable-cors': '→ k8s.apisix.apache.org/enable-cors', 'cors-allow-origin': '→ k8s.apisix.apache.org/cors-allow-origin',
+    'cors-allow-methods': '→ k8s.apisix.apache.org/cors-allow-methods', 'cors-allow-headers': '→ k8s.apisix.apache.org/cors-allow-headers',
+    'ssl-redirect': '→ k8s.apisix.apache.org/http-to-https', 'force-ssl-redirect': '→ k8s.apisix.apache.org/http-to-https',
+    'rewrite-target': '→ k8s.apisix.apache.org/rewrite-target', 'proxy-connect-timeout': '→ k8s.apisix.apache.org/upstream-connect-timeout',
+    'proxy-send-timeout': '→ k8s.apisix.apache.org/upstream-send-timeout', 'proxy-read-timeout': '→ k8s.apisix.apache.org/upstream-read-timeout',
+    'backend-protocol': '→ k8s.apisix.apache.org/upstream-scheme', 'whitelist-source-range': '→ k8s.apisix.apache.org/allowlist-source-range',
+    'auth-url': '→ k8s.apisix.apache.org/auth-uri', 'auth-response-headers': '→ k8s.apisix.apache.org/auth-upstream-headers',
+    'websocket-services': '→ k8s.apisix.apache.org/enable-websocket', 'use-regex': '→ k8s.apisix.apache.org/use-regex',
+    'auth-type': '→ k8s.apisix.apache.org/auth-type', 'auth-realm': '→ k8s.apisix.apache.org/auth-realm',
+    'session-cookie-hash': '→ ApisixPluginConfig + session-cookie-hash 插件',
+    'proxy-redirect-from': '→ k8s.apisix.apache.org/http-to-https', 'proxy-redirect-to': '→ paired with http-to-https',
+    'configuration-snippet': '→ ApisixPluginConfig + proxy-rewrite 插件',
+    'proxy-cookie-path': '→ ApisixPluginConfig + proxy-cookie-path 插件',
+    'limit-rps': '→ ApisixPluginConfig + limit-req 插件', 'limit-rpm': '→ ApisixPluginConfig + limit-req 插件 (rate: N/min)',
+    'limit-connections': '→ ApisixPluginConfig + limit-conn 插件',
+    'limit-multiplier': '→ 需配合 limit-rps/limit-rpm/limit-connections 使用，手动迁移',
+    'custom-http-errors': '需自定义 Lua 插件 (custom-error-page)，参见迁移文档 4.1.3',
+    'affinity': '需 BackendTrafficPolicy CRD 实现会话亲和，参见迁移文档 4.1.1',
+    'session-cookie-name': '需 BackendTrafficPolicy CRD 实现会话亲和，参见迁移文档 4.1.1',
+    'upstream-hash-by': 'APISIX Ingress 没有等价原生注解；请使用 BackendTrafficPolicy 或 ApisixRoute/ApisixUpstream',
+    'auth-tls-secret': '需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6',
+    'auth-tls-verify-client': '需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6',
+    'auth-secret': '需 ApisixConsumer CRD 配合 auth-type 注解，参见迁移文档 4.1.8',
+    'proxy-body-size': '→ ApisixPluginConfig + client-control 插件',
+    'proxy-buffer-size': '需全局配置 nginx_config.http_configuration_snippet.proxy_buffer_size，参见迁移文档 3.1',
+    'proxy-buffers-number': '需全局配置 nginx_config.http_configuration_snippet.proxy_buffers，参见迁移文档 3.1',
+  };
+  // Extra known annotations from scanner
+  const extraManual = {
+    'canary': '→ 需 APISIX canary 路由方案', 'canary-weight': '→ 需 APISIX canary 路由方案',
+    'canary-by-header': '→ 需 APISIX canary 路由方案', 'canary-by-header-value': '→ 需 APISIX canary 路由方案',
+    'canary-by-cookie': '→ 需 APISIX canary 路由方案',
+    'ssl-passthrough': '→ 需 APISIX stream 代理配置', 'ssl-protocols': '→ 需 APISIX 全局 SSL 配置',
+    'ssl-ciphers': '→ 需 APISIX 全局 SSL 配置',
+    'hsts': '→ 需 APISIX serverless 或全局 snippet', 'hsts-max-age': '→ 需 APISIX serverless 或全局 snippet',
+    'hsts-include-subdomains': '→ 需 APISIX serverless 或全局 snippet', 'hsts-preload': '→ 需 APISIX serverless 或全局 snippet',
+    'permanent-redirect': '→ k8s.apisix.apache.org/permanent-redirect', 'temporal-redirect': '→ k8s.apisix.apache.org/temporal-redirect',
+    'app-root': '→ k8s.apisix.apache.org/app-root',
+    'proxy-http-version': '→ APISIX upstream 配置', 'connection-proxy-header': '→ APISIX proxy 配置',
+    'x-forwarded-prefix': '→ 需 proxy-rewrite 插件',
+    'service-upstream': '→ APISIX upstream 配置',
+    'upstream-keepalive-connections': '→ APISIX upstream 配置', 'upstream-keepalive-requests': '→ APISIX upstream 配置',
+    'upstream-keepalive-timeout': '→ APISIX upstream 配置',
+    'denylist-source-range': '→ 需 consumer-restriction 或 IP 限制插件', 'enable-owasp-modsecurity-crc': '→ 需 WAF 插件',
+    'server-snippet': '→ 需 APISIX 全局 snippet', 'disable-access-log': '→ APISIX access log 配置',
+    'preserve-trailing-slash': '→ 需 proxy-rewrite 插件', 'enable-opentracing': '→ APISIX skywalking/zipkin 插件',
+    'enable-influxdb': '→ 需自定义监控方案', 'mirror-target': '→ APISIX proxy-mirror 插件',
+    'mirror-path': '→ APISIX proxy-mirror 插件', 'satisfy': '→ 需自定义认证逻辑',
+    'retry-non-idempotent': '→ APISIX retry 配置',
+  };
+
+  let tableRows = '';
+  const statusColor = s => {
+    if (s === 'CONVERTED') return 'badge-green';
+    if (s === 'PLUGIN_CONFIG') return 'badge-blue';
+    if (s === 'MANUAL') return 'badge-orange';
+    return 'badge-yellow';
+  };
+
+  // First pass: collect all unique annotation keys and group by key
+  const annotationGroups = {};
+
+  for (const item of items) {
+    const ns = item.namespace || (item.metadata && item.metadata.namespace) || 'default';
+    const name = item.name || (item.metadata && item.metadata.name) || 'unnamed';
+    const anns = item.annotations || (item.metadata && item.metadata.annotations) || {};
+    const label = `${ns}/${name}`;
+
+    for (const [k, v] of Object.entries(anns)) {
+      if (v === null || v === undefined) continue;
+      if (!k.startsWith('nginx.ingress.kubernetes.io/') && !k.startsWith('ingress.kubernetes.io/')) continue;
+      const cls = classifyAnnotation(k);
+      let status, detail;
+      if (cls) {
+        status = cls.status === 'handled' ? 'CONVERTED' : cls.status === 'manual' ? 'MANUAL' : 'UNKNOWN';
+        const suffix = cls.suffix;
+        detail = detailMap[suffix] || extraManual[suffix] || '';
+      } else {
+        status = 'UNKNOWN';
+        detail = '未识别的 nginx 注解，需手动迁移';
+      }
+
+      if (!annotationGroups[k]) {
+        annotationGroups[k] = { status, detail };
+      }
+    }
+  }
+
+  // Second pass: build deduplicated table rows and count unique stats
+  const statusOrder = { 'CONVERTED': 0, 'PLUGIN_CONFIG': 0, 'MANUAL': 1, 'UNKNOWN': 2 };
+  const sortedKeys = Object.keys(annotationGroups).sort((a, b) => {
+    const sa = statusOrder[annotationGroups[a].status] ?? 1;
+    const sb = statusOrder[annotationGroups[b].status] ?? 1;
+    return sa !== sb ? sa - sb : a.localeCompare(b);
+  });
+  for (const k of sortedKeys) {
+    const group = annotationGroups[k];
+    totalAnn++;
+    if (group.status === 'CONVERTED') totalConverted++;
+    else if (group.status === 'PLUGIN_CONFIG') totalPlugin++;
+    else if (group.status === 'MANUAL') totalManual++;
+    else totalUnknown++;
+
+    tableRows += `<tr>
+      <td><code>${escapeHtml(k)}</code></td>
+      <td><span class="badge ${statusColor(group.status)}">${group.status}</span></td>
+      <td style="font-size:12px;color:var(--text-muted);">${escapeHtml(group.detail)}</td>
+    </tr>`;
+  }
+
+  if (totalAnn === 0) {
+    resultDiv.style.display='block'; resultDiv.innerHTML = '<span style="color:var(--text-muted)">扫描到 ' + items.length + ' 个资源，但未发现 nginx 相关注解</span>';
+    return;
+  }
+
+  // Close modal and render in check-report-area
+  closePasteJsonModal();
+
+  const area = document.getElementById('check-report-area');
+  area.innerHTML = `
+    <div class="check-report">
+      <div style="font-weight:600;font-size:15px;margin-bottom:12px;">Migration Status <span style="font-size:12px;color:var(--text-muted);font-weight:400;">(from JSON)</span></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+        <div style="flex:1;min-width:120px;padding:10px;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);">
+          <div style="font-size:20px;font-weight:700;color:var(--green);">${totalConverted}</div>
+          <div style="font-size:11px;color:var(--text-muted);">CONVERTED</div>
+        </div>
+        <div style="flex:1;min-width:120px;padding:10px;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);">
+          <div style="font-size:20px;font-weight:700;color:var(--orange);">${totalManual}</div>
+          <div style="font-size:11px;color:var(--text-muted);">MANUAL</div>
+        </div>
+        <div style="flex:1;min-width:120px;padding:10px;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border);">
+          <div style="font-size:20px;font-weight:700;color:var(--yellow);">${totalUnknown}</div>
+          <div style="font-size:11px;color:var(--text-muted);">UNKNOWN</div>
+        </div>
+      </div>
+      <div style="margin-bottom:6px;font-size:12px;color:var(--text-muted);">Scanned ${items.length} resource(s), ${totalAnn} annotation(s)</div>
+      ${totalManual > 0 || totalUnknown > 0 ? '<div style="margin-bottom:16px;padding:8px 12px;background:rgba(210,153,34,0.1);border:1px solid rgba(210,153,34,0.3);border-radius:var(--radius);font-size:13px;color:var(--yellow);">Some annotations need manual attention</div>' : '<div style="margin-bottom:16px;padding:8px 12px;background:rgba(63,185,80,0.1);border:1px solid rgba(63,185,80,0.3);border-radius:var(--radius);font-size:13px;color:var(--green);">All annotations can be automatically migrated!</div>'}
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr>
+          <th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;">Annotation</th>
+          <th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;">Status</th>
+          <th style="text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text-muted);font-weight:500;">Migration Guide</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+  `;
+
+  setStatus('check', `Analyzed ${items.length} resource(s), ${totalAnn} annotation(s)`, 'badge-green');
+  const stats = document.getElementById('check-stats');
+  stats.classList.remove('hidden');
+  stats.innerHTML =
+    `<span class="badge badge-green">${totalConverted} converted</span>` +
+    (totalManual > 0 ? ` <span class="badge badge-orange">${totalManual} manual</span>` : '') +
+    (totalUnknown > 0 ? ` <span class="badge badge-yellow">${totalUnknown} unknown</span>` : '');
+}
+
+function collectItems(data) {
+  const items = [];
+  if (Array.isArray(data)) {
+    for (const d of data) items.push(...collectItems(d));
+  } else if (data.items && Array.isArray(data.items)) {
+    items.push(...data.items);
+  } else if (data.metadata && data.metadata.annotations) {
+    items.push(data);
+  } else if (data.annotations !== undefined && (data.name || data.namespace)) {
+    // Simplified format: {namespace, name, annotations}
+    items.push(data);
+  } else if (data.metadata && (data.metadata.name || data.metadata.namespace)) {
+    // Has metadata but no annotations — still a resource (annotations may be null)
+    items.push(data);
+  }
+  return items;
+}
+
+function splitMultiJson(raw) {
+  const results = [];
+  let depth = 0, start = -1;
+  let inStr = false, esc = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (esc) { esc = false; continue; }
+    if (ch === '\\' && inStr) { esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '{') { if (depth === 0) start = i; depth++; }
+    else if (ch === '}') { depth--; if (depth === 0 && start >= 0) { results.push(raw.slice(start, i + 1)); start = -1; } }
+  }
+  return results;
+}
+
+// Close modal on overlay click or Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePasteJsonModal(); });
+
 </script>
+
+<!-- Paste JSON Modal -->
+<div class="modal-overlay" id="paste-json-overlay" onclick="if(event.target===this)closePasteJsonModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>粘贴 JSON 提取 nginx 注解</h3>
+      <button class="modal-close" onclick="closePasteJsonModal()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <textarea id="paste-json-input" placeholder='粘贴 JSON，如 kubectl get ingress -o json 的输出...'></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn btn-primary btn-sm" onclick="parseAnnotationsFromJson()">&#128269; 提取 nginx 注解</button>
+      </div>
+      <div id="paste-json-result" class="modal-result" style="display:none;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-sm" onclick="closePasteJsonModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
