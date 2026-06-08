@@ -164,11 +164,11 @@ spec:
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if report.Converted != 2 {
-		t.Errorf("expected 2 converted (cors + timeout), got %d", report.Converted)
+	if report.Converted != 3 {
+		t.Errorf("expected 3 converted (cors + timeout + custom-http-errors), got %d", report.Converted)
 	}
-	if report.Manual != 1 {
-		t.Errorf("expected 1 manual (custom-http-errors), got %d", report.Manual)
+	if report.Manual != 0 {
+		t.Errorf("expected 0 manual (custom-http-errors is now converted), got %d", report.Manual)
 	}
 }
 

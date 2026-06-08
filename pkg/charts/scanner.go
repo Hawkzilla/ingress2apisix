@@ -300,15 +300,17 @@ func extractAnnotations(content string) []AnnotationFinding {
 
 // knownManualInfo mirrors converter.knownManualAnnotations for check reporting.
 var knownManualInfo = map[string]string{
-	"custom-http-errors":     "需自定义 Lua 插件 (custom-error-page)，参见迁移文档 4.1.3",
-	"affinity":               "需 BackendTrafficPolicy CRD 实现会话亲和，参见迁移文档 4.1.1",
-	"session-cookie-name":    "需 BackendTrafficPolicy CRD 实现会话亲和，参见迁移文档 4.1.1",
-	"upstream-hash-by":       "APISIX Ingress 没有等价原生注解；如需上游一致性哈希，请使用 BackendTrafficPolicy 或 ApisixRoute/ApisixUpstream 能力",
-	"auth-tls-secret":        "需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6",
-	"auth-tls-verify-client": "需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6",
-	"auth-secret":            "需 ApisixConsumer CRD 配合 auth-type 注解，参见迁移文档 4.1.8",
-	"proxy-buffer-size":      "需全局配置 nginx_config.http_configuration_snippet.proxy_buffer_size，参见迁移文档 3.1",
-	"proxy-buffers-number":   "需全局配置 nginx_config.http_configuration_snippet.proxy_buffers，参见迁移文档 3.1",
+	"affinity":                       "需 BackendTrafficPolicy CRD 实现会话亲和，参见迁移文档 4.1.1",
+	"session-cookie-name":            "需 BackendTrafficPolicy CRD 实现会话亲和，参见迁移文档 4.1.1",
+	"auth-tls-secret":                "需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6",
+	"auth-tls-verify-client":         "需 ApisixTls CRD 实现 mTLS，参见迁移文档 4.1.6",
+	"auth-realm":                     "APISIX forward-auth 插件无 realm 字段；realm 需在 auth 服务端通过 WWW-Authenticate 头自行设置",
+	"proxy-buffer-size":              "需全局配置 nginx_config.http_configuration_snippet.proxy_buffer_size，参见迁移文档 3.1",
+	"proxy-buffers-number":           "需全局配置 nginx_config.http_configuration_snippet.proxy_buffers，参见迁移文档 3.1",
+	"proxy-set-headers":              "需 proxy-rewrite 插件的 headers.set，但值在 ConfigMap 中，需手动迁移",
+	"upstream-keepalive-connections": "需 ApisixUpstream CRD 或全局配置 apisix.upstream.keepalive",
+	"upstream-keepalive-requests":    "需 ApisixUpstream CRD 或全局配置 apisix.upstream.keepalive_requests",
+	"upstream-keepalive-timeout":     "需 ApisixUpstream CRD 或全局配置 apisix.upstream.keepalive_timeout",
 }
 
 // convertedMapping describes the APISIX equivalent for auto-converted annotations.
@@ -326,11 +328,33 @@ var convertedMapping = map[string]string{
 	"backend-protocol":       "→ k8s.apisix.apache.org/upstream-scheme",
 	"whitelist-source-range": "→ k8s.apisix.apache.org/allowlist-source-range",
 	"auth-url":               "→ k8s.apisix.apache.org/auth-uri",
+	"auth-method":            "→ k8s.apisix.apache.org/auth-method (forward-auth request_method)",
+	"auth-request-headers":   "→ k8s.apisix.apache.org/auth-request-headers",
 	"auth-response-headers":  "→ k8s.apisix.apache.org/auth-upstream-headers",
 	"auth-type":              "→ k8s.apisix.apache.org/auth-type (basicAuth/keyAuth)",
-	"auth-realm":             "→ k8s.apisix.apache.org/auth-realm",
+	"auth-signin":            "→ k8s.apisix.apache.org/auth-signin",
+	"auth-secret":            "→ k8s.apisix.apache.org/auth-secret (需创建 ApisixConsumer CRD)",
 	"websocket-services":     "→ k8s.apisix.apache.org/enable-websocket",
 	"use-regex":              "→ k8s.apisix.apache.org/use-regex",
+	// custom-http-errors → custom-error-codes (custom-error-page plugin)
+	"custom-http-errors": "→ k8s.apisix.apache.org/custom-error-codes (custom-error-page 插件)",
+	// Newly auto-converted annotations
+	"enable-access-log":                        "→ k8s.apisix.apache.org/enable-access-log",
+	"upstream-hash-by":                         "→ BackendTrafficPolicy CRD (chash 负载均衡)",
+	"enable-real-ip":                           "→ ApisixPluginConfig + real-ip 插件",
+	"use-forwarded-headers":                    "→ 配合 real-ip 插件 (recursive=true)",
+	"compute-full-forwarded-for":               "→ 配合 real-ip 插件 (append=true)",
+	"forwarded-for-header":                     "→ 配合 real-ip 插件 (source 配置)",
+	"ssl-verify":                               "→ ApisixUpstream TLS 配置或 proxy-ssl 插件",
+	"limit-multiplier":                         "→ 自动乘算 limit-rps/limit-rpm 值",
+	"health-check-interval":                    "→ BackendTrafficPolicy CRD (healthCheck.active.interval)",
+	"health-check-path":                        "→ BackendTrafficPolicy CRD (healthCheck.active.httpPath)",
+	"health-check-retries":                     "→ BackendTrafficPolicy CRD (healthCheck.active.healthy.successes)",
+	"health-check-timeout":                     "→ BackendTrafficPolicy CRD (healthCheck.active.timeout)",
+	"session-cookie-expires":                   "→ 扩展 session-cookie-hash 插件 (max_age)",
+	"session-cookie-max-age":                   "→ 扩展 session-cookie-hash 插件 (max_age)",
+	"session-cookie-path":                      "→ 扩展 session-cookie-hash 插件 (cookie_path)",
+	"session-cookie-conditional-samesite-none": "→ APISIX 无直接等价，需应用层或 Cookie 插件处理",
 }
 
 // knownManualExtraInfo adds more known annotations that require manual handling,
@@ -362,11 +386,7 @@ var knownManualExtraInfo = map[string]string{
 	"proxy-http-version": "需全局配置上游 HTTP 版本",
 	// Service upstream (use ClusterIP)
 	"service-upstream": "需 APISIX 全局 DNS 解析模式配置",
-	// Upstream keepalive
-	"upstream-keepalive-connections": "需全局配置 apisix.upstream.keepalive",
-	"upstream-keepalive-requests":    "需全局配置 apisix.upstream.keepalive_requests",
-	"upstream-keepalive-timeout":     "需全局配置 apisix.upstream.keepalive_timeout",
-	// Access log
+	// Access log disable
 	"disable-access-log": "需全局配置 nginx_config.http.access_log",
 	// Denylist
 	"denylist-source-range": "→ k8s.apisix.apache.org/blocklist-source-range",
@@ -390,6 +410,16 @@ var knownManualExtraInfo = map[string]string{
 	"enable-owasp-modsecurity-crc": "需 APISIX waf 插件配置",
 	"modsecurity-transaction-id":   "需配合 ModSecurity 使用",
 	"modsecurity-snippet":          "需配合 ModSecurity 使用",
+	// Proxy set headers → proxy-rewrite but value is in ConfigMap
+	"proxy-set-headers": "需 proxy-rewrite 插件的 headers.set，但值在 ConfigMap 中，需手动迁移",
+	// Remaining unknown annotations
+	"affinity-mode":           "→ 需 BackendTrafficPolicy CRD 配合 session affinity",
+	"proxy-buffering":         "→ 需全局 nginx snippet proxy_buffering 配置",
+	"proxy-request-buffering": "→ 需全局 nginx snippet proxy_request_buffering 配置",
+	// Upstream keepalive (still manual)
+	"upstream-keepalive-connections": "需 ApisixUpstream CRD 或全局配置 apisix.upstream.keepalive",
+	"upstream-keepalive-requests":    "需 ApisixUpstream CRD 或全局配置 apisix.upstream.keepalive_requests",
+	"upstream-keepalive-timeout":     "需 ApisixUpstream CRD 或全局配置 apisix.upstream.keepalive_timeout",
 }
 
 // classifyAnnotation determines the migration status of a single annotation suffix.
@@ -429,6 +459,18 @@ func classifyAnnotation(fullKey, suffix string) AnnotationFinding {
 		f.Status = StatusPluginConfig
 		f.Detail = "→ ApisixPluginConfig + proxy-cookie-path 插件"
 		return f
+	case "cors-allow-credentials":
+		f.Status = StatusPluginConfig
+		f.Detail = "→ cors 插件 allow_credential"
+		return f
+	case "cors-max-age":
+		f.Status = StatusPluginConfig
+		f.Detail = "→ cors 插件 max_age"
+		return f
+	case "upstream-vhost":
+		f.Status = StatusPluginConfig
+		f.Detail = "→ proxy-rewrite 插件 host"
+		return f
 	case "session-cookie-hash":
 		f.Status = StatusCustomPlugin
 		f.Detail = "→ ApisixPluginConfig + 自定义 session-cookie-hash 插件；会话亲和仍需 BackendTrafficPolicy 承载"
@@ -440,6 +482,50 @@ func classifyAnnotation(fullKey, suffix string) AnnotationFinding {
 	case "proxy-redirect-from", "proxy-redirect-to":
 		f.Status = StatusConverted
 		f.Detail = "→ k8s.apisix.apache.org/http-to-https (仅 HTTP→HTTPS 场景可自动迁移，其他场景需手动处理)"
+		return f
+	case "limit-multiplier":
+		f.Status = StatusPluginConfig
+		f.Detail = "→ 自动乘算 limit-rps/limit-rpm 值，生成到 ApisixPluginConfig + limit-req 插件"
+		return f
+	case "enable-real-ip":
+		f.Status = StatusPluginConfig
+		f.Detail = "→ ApisixPluginConfig + real-ip 插件 (source, real_ip_from)"
+		return f
+	case "use-forwarded-headers":
+		f.Status = StatusPluginConfig
+		f.Detail = "→ 配合 real-ip 插件 (recursive=true)"
+		return f
+	case "compute-full-forwarded-for":
+		f.Status = StatusPluginConfig
+		f.Detail = "→ 配合 real-ip 插件 (append 模式)"
+		return f
+	case "forwarded-for-header":
+		f.Status = StatusPluginConfig
+		f.Detail = "→ 配合 real-ip 插件 (source 配置)"
+		return f
+	case "ssl-verify":
+		f.Status = StatusConverted
+		f.Detail = "→ ApisixUpstream TLS 配置或 proxy-ssl 插件"
+		return f
+	case "enable-access-log":
+		f.Status = StatusConverted
+		f.Detail = "→ k8s.apisix.apache.org/enable-access-log"
+		return f
+	case "upstream-hash-by":
+		f.Status = StatusConverted
+		f.Detail = "→ BackendTrafficPolicy CRD (chash 负载均衡)"
+		return f
+	case "health-check-interval", "health-check-path", "health-check-retries", "health-check-timeout":
+		f.Status = StatusConverted
+		f.Detail = "→ BackendTrafficPolicy CRD (healthCheck)"
+		return f
+	case "session-cookie-expires", "session-cookie-max-age", "session-cookie-path":
+		f.Status = StatusCustomPlugin
+		f.Detail = "→ 扩展 session-cookie-hash 插件配置"
+		return f
+	case "session-cookie-conditional-samesite-none":
+		f.Status = StatusCustomPlugin
+		f.Detail = "→ APISIX 无直接等价参数，发出警告指导手动处理"
 		return f
 	}
 

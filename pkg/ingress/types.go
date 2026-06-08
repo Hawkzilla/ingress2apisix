@@ -28,6 +28,9 @@ type Metadata struct {
 	Namespace   string            `yaml:"namespace"`
 	Labels      map[string]string `yaml:"labels,omitempty"`
 	Annotations map[string]string `yaml:"annotations,omitempty"`
+	// SourceAnnotations maps output annotation key → original nginx annotation(s).
+	// Used for YAML comment injection. Not marshalled to YAML.
+	SourceAnnotations map[string]string `yaml:"-"`
 }
 
 type IngressSpec struct {

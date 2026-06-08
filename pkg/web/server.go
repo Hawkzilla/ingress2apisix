@@ -2,6 +2,7 @@ package web
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
@@ -10,7 +11,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/ingress2apisix/pkg/apisix"
 	"github.com/ingress2apisix/pkg/charts"
@@ -25,15 +28,23 @@ type Server struct {
 	version      string
 	feedback     *FeedbackStore
 	announcement *AnnouncementStore
+	docsDir      string
+	docsMu       sync.RWMutex
+	docsList     []DocInfo
+	docsContent  map[string][]byte
+	docMeta      map[string]docMeta
 }
 
 // NewServer creates a new web server.
 func NewServer(addr string, opts apisix.ConversionOptions, ver string) *Server {
 	s := &Server{
-		mux:     http.NewServeMux(),
-		opts:    opts,
-		addr:    addr,
-		version: ver,
+		mux:         http.NewServeMux(),
+		opts:        opts,
+		addr:        addr,
+		version:     ver,
+		docsDir:     findDocsDir(),
+		docsContent: make(map[string][]byte),
+		docMeta:     make(map[string]docMeta),
 	}
 
 	// Initialize feedback store (non-fatal on failure)
@@ -50,8 +61,117 @@ func NewServer(addr string, opts apisix.ConversionOptions, ver string) *Server {
 		s.announcement = store
 	}
 
+	// Initial docs scan
+	s.scanDocs()
+	docServer = s
+
 	s.routes()
 	return s
+}
+
+// findDocsDir locates the docs directory relative to the working directory.
+// Checks ./docs, ./pkg/web/docs, and falls back to empty string (use embedded).
+func findDocsDir() string {
+	candidates := []string{
+		"docs",
+		filepath.Join("pkg", "web", "docs"),
+	}
+	for _, c := range candidates {
+		if info, err := os.Stat(c); err == nil && info.IsDir() {
+			return c
+		}
+	}
+	return ""
+}
+
+// docMeta tracks modification metadata for change detection.
+type docMeta struct {
+	modTime int64
+	size    int64
+}
+
+// scanDocs reads all .md files from the docs directory and caches them.
+// Uses mtime+size to skip re-reading unchanged files.
+func (s *Server) scanDocs() {
+	dir := s.docsDir
+	if dir == "" {
+		return
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+
+	// Collect current file info for change detection
+	current := make(map[string]docMeta)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), ".md")
+		current[name] = docMeta{
+			modTime: info.ModTime().UnixNano(),
+			size:    info.Size(),
+		}
+	}
+
+	// Check if anything changed
+	s.docsMu.RLock()
+	changed := len(current) != len(s.docMeta)
+	if !changed {
+		for name, meta := range current {
+			if old, ok := s.docMeta[name]; !ok || old != meta {
+				changed = true
+				break
+			}
+		}
+	}
+	s.docsMu.RUnlock()
+
+	if !changed {
+		return
+	}
+
+	// Something changed — rebuild cache
+	var docs []DocInfo
+	content := make(map[string][]byte)
+	meta := make(map[string]docMeta)
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), ".md")
+		title := extractTitleFromData(data, entry.Name())
+		docs = append(docs, DocInfo{
+			Name:  name,
+			Title: title,
+			File:  entry.Name(),
+		})
+		content[name] = data
+		meta[name] = current[name]
+	}
+
+	sort.Slice(docs, func(i, j int) bool {
+		return docs[i].File < docs[j].File
+	})
+
+	s.docsMu.Lock()
+	s.docsList = docs
+	s.docsContent = content
+	s.docMeta = meta
+	s.docsMu.Unlock()
+
+	fmt.Printf("Docs: scanned %d markdown files from %s\n", len(docs), dir)
 }
 
 // routes registers all HTTP handlers.
@@ -59,14 +179,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleIndex)
 	s.mux.HandleFunc("/api/convert", s.handleConvert)
 	s.mux.HandleFunc("/api/check", s.handleCheck)
-	s.mux.HandleFunc("/api/migrate", s.handleMigrate)
+	//	s.mux.HandleFunc("/api/migrate", s.handleMigrate)
 	s.mux.HandleFunc("/api/download/migrate-tar", s.handleDownloadMigrateTar)
-	s.mux.HandleFunc("/api/docs/migration", s.handleDocMigration)
-	s.mux.HandleFunc("/api/docs/annotations", s.handleDocAnnotations)
-	s.mux.HandleFunc("/api/docs/usage", s.handleDocUsage)
-	s.mux.HandleFunc("/api/docs/webui", s.handleDocWebUI)
-	s.mux.HandleFunc("/api/docs/multi-region-idp-proxy", s.handleDocMultiRegionIDP)
-	s.mux.HandleFunc("/api/feedback", s.handleFeedback)
+	s.mux.HandleFunc("/api/docs/list", s.handleDocList)
+	s.mux.HandleFunc("/api/docs/upload", s.handleDocUpload)
+	s.mux.HandleFunc("/api/docs/{name}", s.handleDocDynamic)
+	// s.mux.HandleFunc("/api/feedback", s.handleFeedback)
 	s.mux.HandleFunc("/api/announcements", s.handleAnnouncements)
 	s.RegisterUploadRoutes()
 }
@@ -78,33 +196,15 @@ func (s *Server) ListenAndServe() error {
 }
 
 // handleIndex serves the web UI and static assets.
+// Prefers the new Vue SPA (static/dist/) if built, falls back to old monolith (static/index.html).
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		// Serve static files
-		if strings.HasPrefix(r.URL.Path, "/static/") {
-			name := strings.TrimPrefix(r.URL.Path, "/")
-			data, err := staticFS.ReadFile(name)
-			if err != nil {
-				http.NotFound(w, r)
-				return
-			}
-			ct := "text/plain"
-			switch {
-			case strings.HasSuffix(name, ".png"):
-				ct = "image/png"
-			case strings.HasSuffix(name, ".jpg"), strings.HasSuffix(name, ".jpeg"):
-				ct = "image/jpeg"
-			case strings.HasSuffix(name, ".gif"):
-				ct = "image/gif"
-			case strings.HasSuffix(name, ".svg"):
-				ct = "image/svg+xml"
-			case strings.HasSuffix(name, ".css"):
-				ct = "text/css"
-			case strings.HasSuffix(name, ".js"):
-				ct = "application/javascript"
-			}
+	// Serve static assets from the new Vite build (content-hashed filenames)
+	if strings.HasPrefix(r.URL.Path, "/assets/") {
+		name := "static/dist" + r.URL.Path
+		if data, err := staticFS.ReadFile(name); err == nil {
+			ct := contentTypeByExt(name)
 			w.Header().Set("Content-Type", ct)
-			w.Header().Set("Cache-Control", "max-age=3600")
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 			w.Write(data)
 			return
 		}
@@ -112,10 +212,54 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serve index.html with version injection
+	// Serve self-hosted fonts from Vite public directory
+	if strings.HasPrefix(r.URL.Path, "/fonts/") {
+		name := "static/dist" + r.URL.Path
+		if data, err := staticFS.ReadFile(name); err == nil {
+			ct := contentTypeByExt(name)
+			w.Header().Set("Content-Type", ct)
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			w.Write(data)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
+
+	if r.URL.Path != "/" {
+		// Legacy static files (old monolith assets)
+		if strings.HasPrefix(r.URL.Path, "/static/") {
+			name := strings.TrimPrefix(r.URL.Path, "/")
+			data, err := staticFS.ReadFile(name)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			ct := contentTypeByExt(name)
+			w.Header().Set("Content-Type", ct)
+			w.Header().Set("Cache-Control", "max-age=3600")
+			w.Write(data)
+			return
+		}
+		// For non-API, non-asset paths, serve the SPA (Vue Router history mode)
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			s.serveSPA(w)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
+
+	// Root path: serve SPA if available, otherwise old monolith
+	if _, err := staticFS.ReadFile("static/dist/index.html"); err == nil {
+		s.serveSPA(w)
+		return
+	}
+
+	// Fallback: old monolith
 	data, err := staticFS.ReadFile("static/index.html")
 	if err != nil {
-		http.Error(w, "Failed to load index.html", http.StatusInternalServerError)
+		http.Error(w, "Frontend not built", http.StatusInternalServerError)
 		return
 	}
 	html := strings.ReplaceAll(string(data), "{{VERSION}}", s.version)
@@ -123,11 +267,51 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(html))
 }
 
+// serveSPA serves the Vue SPA's index.html for any path (history-mode routing).
+func (s *Server) serveSPA(w http.ResponseWriter) {
+	data, err := staticFS.ReadFile("static/dist/index.html")
+	if err != nil {
+		http.Error(w, "Frontend not built", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(data)
+}
+
+func contentTypeByExt(name string) string {
+	switch {
+	case strings.HasSuffix(name, ".png"):
+		return "image/png"
+	case strings.HasSuffix(name, ".jpg"), strings.HasSuffix(name, ".jpeg"):
+		return "image/jpeg"
+	case strings.HasSuffix(name, ".gif"):
+		return "image/gif"
+	case strings.HasSuffix(name, ".svg"):
+		return "image/svg+xml"
+	case strings.HasSuffix(name, ".css"):
+		return "text/css"
+	case strings.HasSuffix(name, ".js"):
+		return "application/javascript"
+	case strings.HasSuffix(name, ".woff2"):
+		return "font/woff2"
+	case strings.HasSuffix(name, ".woff"):
+		return "font/woff"
+	case strings.HasSuffix(name, ".ico"):
+		return "image/x-icon"
+	case strings.HasSuffix(name, ".json"):
+		return "application/json"
+	default:
+		return "text/plain"
+	}
+}
+
 // --- Request / Response types ---
 
 type convertRequest struct {
 	YAML        string `json:"yaml"`
 	SslRedirect bool   `json:"sslRedirect"`
+	// Target is the conversion target: "apisix" (default) or "gateway".
+	Target string `json:"target"`
 }
 
 type convertResponse struct {
@@ -208,17 +392,26 @@ func (s *Server) handleConvert(w http.ResponseWriter, r *http.Request) {
 
 	opts := s.opts
 	opts.SSLRedirect = req.SslRedirect
-	c := converter.New(opts)
 
 	var result apisix.ConversionResult
-	result.InputFormat = parsed.Format
-	for _, ing := range parsed.Ingresses {
-		r := c.Convert(ing)
-		result.Ingresses = append(result.Ingresses, r.Ingresses...)
-		result.PluginConfigs = append(result.PluginConfigs, r.PluginConfigs...)
-		result.BackendTrafficPolicies = append(result.BackendTrafficPolicies, r.BackendTrafficPolicies...)
-		result.Warnings = append(result.Warnings, r.Warnings...)
-		result.Errors = append(result.Errors, r.Errors...)
+	var summary string
+
+	if req.Target == "GatewayAPI" {
+		gc := converter.NewGatewayConverter(opts)
+		result = gc.ConvertList(parsed)
+		summary = converter.FormatGatewayAPIResultSummary(result)
+	} else {
+		c := converter.New(opts)
+		result.InputFormat = parsed.Format
+		for _, ing := range parsed.Ingresses {
+			r := c.Convert(ing)
+			result.Ingresses = append(result.Ingresses, r.Ingresses...)
+			result.PluginConfigs = append(result.PluginConfigs, r.PluginConfigs...)
+			result.BackendTrafficPolicies = append(result.BackendTrafficPolicies, r.BackendTrafficPolicies...)
+			result.Warnings = append(result.Warnings, r.Warnings...)
+			result.Errors = append(result.Errors, r.Errors...)
+		}
+		summary = converter.FormatResultSummary(result)
 	}
 
 	var buf bytes.Buffer
@@ -230,7 +423,6 @@ func (s *Server) handleConvert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summary := converter.FormatResultSummary(result)
 	errStrs := make([]string, len(result.Errors))
 	for i, e := range result.Errors {
 		errStrs[i] = e.Error()
@@ -506,27 +698,57 @@ func (s *Server) handleDownloadMigrateTar(w http.ResponseWriter, r *http.Request
 
 // --- Doc handlers ---
 
-func (s *Server) handleDocMigration(w http.ResponseWriter, r *http.Request) {
-	serveDoc(w, "migration.md")
+// docServer is set by NewServer so serveDoc can access runtime docs.
+var docServer *Server
+
+// DocInfo holds metadata about a documentation file.
+type DocInfo struct {
+	Name  string `json:"name"`
+	Title string `json:"title"`
+	File  string `json:"file"`
 }
 
-func (s *Server) handleDocAnnotations(w http.ResponseWriter, r *http.Request) {
-	serveDoc(w, "annotations.md")
-}
+// handleDocDynamic serves any markdown document by name, checking runtime filesystem first, then embedded FS.
+func (s *Server) handleDocDynamic(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		http.Error(w, "Missing document name", http.StatusBadRequest)
+		return
+	}
 
-func (s *Server) handleDocUsage(w http.ResponseWriter, r *http.Request) {
-	serveDoc(w, "usage.md")
-}
+	// Try runtime filesystem cache first
+	s.docsMu.RLock()
+	data, ok := s.docsContent[name]
+	s.docsMu.RUnlock()
+	if ok {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(data)
+		return
+	}
 
-func (s *Server) handleDocWebUI(w http.ResponseWriter, r *http.Request) {
-	serveDoc(w, "webui.md")
-}
-
-func (s *Server) handleDocMultiRegionIDP(w http.ResponseWriter, r *http.Request) {
-	serveDoc(w, "multi-region-idp-proxy.md")
+	// Fallback to embedded FS
+	embedded, err := docsFS.ReadFile("docs/" + name + ".md")
+	if err != nil {
+		http.Error(w, "Document not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write(embedded)
 }
 
 func serveDoc(w http.ResponseWriter, name string) {
+	// Try runtime filesystem first
+	if s := docServer; s != nil {
+		s.docsMu.RLock()
+		data, ok := s.docsContent[strings.TrimSuffix(name, ".md")]
+		s.docsMu.RUnlock()
+		if ok {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Write(data)
+			return
+		}
+	}
+	// Fallback to embedded FS
 	data, err := docsFS.ReadFile("docs/" + name)
 	if err != nil {
 		http.Error(w, "Document not found", http.StatusNotFound)
@@ -534,6 +756,96 @@ func serveDoc(w http.ResponseWriter, name string) {
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write(data)
+}
+
+func (s *Server) handleDocList(w http.ResponseWriter, r *http.Request) {
+	// Re-scan docs on each request so new/updated files are picked up
+	s.scanDocs()
+
+	s.docsMu.RLock()
+	docs := s.docsList
+	s.docsMu.RUnlock()
+
+	if docs == nil {
+		docs = []DocInfo{}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"data":    docs,
+	})
+}
+
+func (s *Server) handleDocUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.docsDir == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   "Docs directory not configured",
+		})
+		return
+	}
+
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Failed to parse upload: " + err.Error(),
+		})
+		return
+	}
+
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "No files uploaded",
+		})
+		return
+	}
+
+	var uploaded []string
+	for _, fh := range files {
+		if !strings.HasSuffix(fh.Filename, ".md") {
+			continue
+		}
+		src, err := fh.Open()
+		if err != nil {
+			continue
+		}
+		data, err := io.ReadAll(src)
+		src.Close()
+		if err != nil {
+			continue
+		}
+		dstPath := filepath.Join(s.docsDir, fh.Filename)
+		if err := os.WriteFile(dstPath, data, 0644); err != nil {
+			continue
+		}
+		uploaded = append(uploaded, fh.Filename)
+	}
+
+	// Re-scan so the new files appear in the list cache
+	s.scanDocs()
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success":  true,
+		"uploaded": uploaded,
+	})
+}
+
+// extractTitleFromData reads the first # heading from markdown data.
+func extractTitleFromData(data []byte, fallbackName string) string {
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "# ") {
+			return strings.TrimPrefix(line, "# ")
+		}
+	}
+	return strings.TrimSuffix(fallbackName, ".md")
 }
 
 // --- Feedback handlers ---

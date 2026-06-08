@@ -404,6 +404,27 @@ func strPtr(s string) *string {
 	return &s
 }
 
+// containsNonComment returns true if the data contains the substring on a non-comment line.
+// Handles both standalone comment lines and inline comments (# Source: ...).
+func containsNonComment(data []byte, substr []byte) bool {
+	lines := bytes.Split(data, []byte("\n"))
+	for _, line := range lines {
+		trimmed := bytes.TrimSpace(line)
+		// Skip standalone comment lines
+		if bytes.HasPrefix(trimmed, []byte("#")) {
+			continue
+		}
+		// Strip inline comments (everything after "  # ")
+		if idx := bytes.Index(line, []byte("  # ")); idx >= 0 {
+			line = line[:idx]
+		}
+		if bytes.Contains(line, substr) {
+			return true
+		}
+	}
+	return false
+}
+
 func makeTestIngress(name, ns string, annotations map[string]string, tls []ingress.IngressTLS, rules []ingress.IngressRule) ingress.Ingress {
 	return ingress.Ingress{
 		APIVersion: "networking.k8s.io/v1",
@@ -467,14 +488,20 @@ func TestConvert_CORS(t *testing.T) {
 	result := c.Convert(ing)
 	out := result.Ingresses[0].(ingress.Ingress)
 
-	if out.Metadata.Annotations["k8s.apisix.apache.org/enable-cors"] != "true" {
-		t.Error("expected cors annotation to be set")
-	}
-	if out.Metadata.Annotations["k8s.apisix.apache.org/cors-allow-origin"] != "*" {
-		t.Error("expected cors-allow-origin to be '*'")
+	// CORS is now fully handled by ApisixPluginConfig, not AIC annotations
+	if out.Metadata.Annotations["k8s.apisix.apache.org/enable-cors"] != "" {
+		t.Error("cors AIC annotations should NOT be set (handled by ApisixPluginConfig)")
 	}
 	if _, ok := out.Metadata.Annotations["nginx.ingress.kubernetes.io/enable-cors"]; ok {
 		t.Error("original nginx cors annotation should be removed")
+	}
+	// Should have ApisixPluginConfig with cors plugin
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig for CORS, got %d", len(result.PluginConfigs))
+	}
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["allow_credential"] != true {
+		t.Error("expected allow_credential=true (ingress-nginx default)")
 	}
 }
 
@@ -762,8 +789,31 @@ func TestConvert_AuthUrl(t *testing.T) {
 		t.Errorf("expected auth-upstream-headers=Authorization, got '%s'",
 			out.Metadata.Annotations["k8s.apisix.apache.org/auth-upstream-headers"])
 	}
-	if out.Metadata.Annotations["k8s.apisix.apache.org/auth-request-headers"] != "User-Agent,cookie" {
-		t.Errorf("expected default auth-request-headers, got '%s'",
+	if _, exists := out.Metadata.Annotations["k8s.apisix.apache.org/auth-request-headers"]; exists {
+		t.Errorf("should not auto-set auth-request-headers, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/auth-request-headers"])
+	}
+}
+
+func TestConvert_AuthRequestHeaders_ConvertsToAnnotation(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("auth-headers-test", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/auth-url":             "http://auth-svc/verify",
+			"nginx.ingress.kubernetes.io/auth-request-headers": "Authorization,X-Custom-Token",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
+
+	if out.Metadata.Annotations["k8s.apisix.apache.org/auth-uri"] != "http://auth-svc/verify" {
+		t.Errorf("expected auth-uri, got '%s'", out.Metadata.Annotations["k8s.apisix.apache.org/auth-uri"])
+	}
+	if out.Metadata.Annotations["k8s.apisix.apache.org/auth-request-headers"] != "Authorization,X-Custom-Token" {
+		t.Errorf("expected auth-request-headers=Authorization,X-Custom-Token, got '%s'",
 			out.Metadata.Annotations["k8s.apisix.apache.org/auth-request-headers"])
 	}
 }
@@ -1054,8 +1104,9 @@ func TestConvert_PlainPrefix_CORS(t *testing.T) {
 	result := c.Convert(ing)
 	out := result.Ingresses[0].(ingress.Ingress)
 
-	if out.Metadata.Annotations["k8s.apisix.apache.org/enable-cors"] != "true" {
-		t.Error("expected cors annotation from ingress.kubernetes.io prefix")
+	// CORS is handled by ApisixPluginConfig, not AIC annotations
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig for CORS, got %d", len(result.PluginConfigs))
 	}
 	if _, ok := out.Metadata.Annotations["ingress.kubernetes.io/enable-cors"]; ok {
 		t.Error("original ingress.kubernetes.io annotation should be removed")
@@ -1118,8 +1169,8 @@ func TestConvert_MixedPrefixes_SameResource(t *testing.T) {
 	result := c.Convert(ing)
 	out := result.Ingresses[0].(ingress.Ingress)
 
-	if out.Metadata.Annotations["k8s.apisix.apache.org/enable-cors"] != "true" {
-		t.Error("expected cors from nginx prefix")
+	if out.Metadata.Annotations["k8s.apisix.apache.org/enable-cors"] != "" {
+		t.Error("cors AIC annotations should NOT be set (handled by ApisixPluginConfig)")
 	}
 	if out.Metadata.Annotations["k8s.apisix.apache.org/http-to-https"] != "true" {
 		t.Error("expected http-to-https from plain prefix")
@@ -1177,18 +1228,15 @@ func TestWriteConversionResult_RoundTrip(t *testing.T) {
 	if !bytes.Contains(buf.Bytes(), []byte("kind: ApisixPluginConfig")) {
 		t.Error("output should contain ApisixPluginConfig kind")
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("k8s.apisix.apache.org/enable-cors")) {
-		t.Error("output should contain APISIX CORS annotation")
-	}
-	// PluginConfig must be linked via annotation
+	// CORS is now fully handled by ApisixPluginConfig (cors plugin), not AIC annotations
 	if !bytes.Contains(buf.Bytes(), []byte("k8s.apisix.apache.org/plugin-config-name")) {
 		t.Error("output should contain plugin-config-name annotation linking PluginConfig")
 	}
-	if bytes.Contains(buf.Bytes(), []byte("nginx.ingress.kubernetes.io/")) {
-		t.Error("output should not contain any nginx annotations")
+	if containsNonComment(buf.Bytes(), []byte("nginx.ingress.kubernetes.io/")) {
+		t.Error("output should not contain any nginx annotations (only in source comments)")
 	}
-	if bytes.Contains(buf.Bytes(), []byte("ingress.kubernetes.io/")) {
-		t.Error("output should not contain any ingress.kubernetes.io annotations")
+	if containsNonComment(buf.Bytes(), []byte("ingress.kubernetes.io/")) {
+		t.Error("output should not contain any ingress.kubernetes.io annotations (only in source comments)")
 	}
 }
 
@@ -1288,6 +1336,8 @@ func TestPathHasRegex(t *testing.T) {
 // --- Warning Tests ---
 
 func TestWarning_CustomHTTPErrors(t *testing.T) {
+	// custom-http-errors is now auto-converted to custom-error-codes annotation,
+	// so no warning should be generated.
 	c := newTestConverter()
 	ing := makeTestIngress("err-ingress", "default",
 		map[string]string{
@@ -1299,14 +1349,16 @@ func TestWarning_CustomHTTPErrors(t *testing.T) {
 
 	result := c.Convert(ing)
 
-	found := false
 	for _, w := range result.Warnings {
-		if strings.Contains(w, "custom-http-errors") && strings.Contains(w, "4.1.3") {
-			found = true
+		if strings.Contains(w, "custom-http-errors") {
+			t.Errorf("unexpected warning for custom-http-errors (should be auto-converted): %s", w)
 		}
 	}
-	if !found {
-		t.Errorf("expected warning for custom-http-errors, got warnings: %v", result.Warnings)
+
+	out := result.Ingresses[0].(ingress.Ingress)
+	if out.Metadata.Annotations["k8s.apisix.apache.org/custom-error-codes"] != "404,500" {
+		t.Errorf("expected custom-error-codes=404,500, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/custom-error-codes"])
 	}
 }
 
@@ -1570,14 +1622,21 @@ func TestConvert_UpstreamHashBy_DoesNotInventAnnotation(t *testing.T) {
 	if _, ok := out.Metadata.Annotations["k8s.apisix.apache.org/upstream-hash"]; ok {
 		t.Fatal("must not emit nonexistent k8s.apisix.apache.org/upstream-hash annotation")
 	}
-	foundWarn := false
-	for _, w := range result.Warnings {
-		if strings.Contains(w, "upstream-hash-by") && strings.Contains(w, "没有等价原生注解") {
-			foundWarn = true
-		}
+
+	// upstream-hash-by is now auto-converted to BackendTrafficPolicy
+	if len(result.BackendTrafficPolicies) != 1 {
+		t.Fatalf("expected 1 BackendTrafficPolicy for upstream-hash-by, got %d", len(result.BackendTrafficPolicies))
 	}
-	if !foundWarn {
-		t.Fatalf("expected warning for upstream-hash-by, got: %v", result.Warnings)
+	btp := result.BackendTrafficPolicies[0]
+	if btp.Spec.LoadBalancer.Type != "chash" {
+		t.Errorf("expected chash, got %s", btp.Spec.LoadBalancer.Type)
+	}
+
+	// Should NOT have a manual warning for upstream-hash-by
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "upstream-hash-by") && strings.Contains(w, "无法自动转换") {
+			t.Fatalf("upstream-hash-by should now be auto-converted, got: %s", w)
+		}
 	}
 }
 
@@ -1795,7 +1854,7 @@ func TestWarning_MoreSetHeaders(t *testing.T) {
 	}
 }
 
-func TestWarning_AuthSecretInPluginConfig(t *testing.T) {
+func TestConvert_AuthSecret_ProducesWarning(t *testing.T) {
 	c := newTestConverter()
 	ing := makeTestIngress("auth-secret-ingress", "default",
 		map[string]string{
@@ -1807,15 +1866,24 @@ func TestWarning_AuthSecretInPluginConfig(t *testing.T) {
 	)
 
 	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
 
-	found := false
+	// auth-secret is NOT supported by AIC, should NOT be passed through
+	if out.Metadata.Annotations["k8s.apisix.apache.org/auth-secret"] != "" {
+		t.Errorf("auth-secret should NOT be passed through (AIC doesn't support it), got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/auth-secret"])
+	}
+
+	// Should produce a warning about auth-secret
+	foundWarn := false
 	for _, w := range result.Warnings {
-		if strings.Contains(w, "auth-secret") && strings.Contains(w, "ApisixConsumer") {
-			found = true
+		if strings.Contains(w, "auth-secret") {
+			foundWarn = true
+			break
 		}
 	}
-	if !found {
-		t.Errorf("expected warning for auth-secret needing ApisixConsumer, got warnings: %v", result.Warnings)
+	if !foundWarn {
+		t.Error("expected a warning about auth-secret not being supported")
 	}
 }
 
@@ -1846,7 +1914,7 @@ func TestConvert_PluginConfigLinked(t *testing.T) {
 	}
 }
 
-func TestConvert_NoPluginConfig_NoLink(t *testing.T) {
+func TestConvert_CORS_AlwaysCreatesPluginConfig(t *testing.T) {
 	c := newTestConverter()
 	ing := makeTestIngress("no-link", "default",
 		map[string]string{
@@ -1858,13 +1926,42 @@ func TestConvert_NoPluginConfig_NoLink(t *testing.T) {
 
 	result := c.Convert(ing)
 
-	if len(result.PluginConfigs) != 0 {
-		t.Fatalf("expected 0 PluginConfigs, got %d", len(result.PluginConfigs))
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig for CORS, got %d", len(result.PluginConfigs))
 	}
 
 	out := result.Ingresses[0].(ingress.Ingress)
-	if _, ok := out.Metadata.Annotations["k8s.apisix.apache.org/plugin-config-name"]; ok {
-		t.Error("should not have plugin-config-name annotation when no PluginConfig is generated")
+	expected := result.PluginConfigs[0].Metadata.Name
+	if out.Metadata.Annotations["k8s.apisix.apache.org/plugin-config-name"] != expected {
+		t.Errorf("expected plugin-config-name=%q, got %q",
+			expected,
+			out.Metadata.Annotations["k8s.apisix.apache.org/plugin-config-name"])
+	}
+
+	// Verify CORS plugin config has ingress-nginx defaults
+	corsPlugin := result.PluginConfigs[0].Spec.Plugins[0]
+	if corsPlugin.Name != "cors" {
+		t.Fatalf("expected cors plugin, got %s", corsPlugin.Name)
+	}
+	cfg := corsPlugin.Config.(map[string]interface{})
+	if cfg["allow_credential"] != true {
+		t.Errorf("expected allow_credential=true, got %v", cfg["allow_credential"])
+	}
+	if cfg["max_age"] != 1728000 {
+		t.Errorf("expected max_age=1728000, got %v", cfg["max_age"])
+	}
+	if cfg["allow_methods"] != "GET, PUT, POST, DELETE, PATCH, OPTIONS" {
+		t.Errorf("expected ingress-nginx default methods, got %v", cfg["allow_methods"])
+	}
+	if cfg["allow_headers"] != "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization" {
+		t.Errorf("expected ingress-nginx default headers, got %v", cfg["allow_headers"])
+	}
+	// With credentials + wildcard origin, should use allow_origins_by_regex
+	if _, ok := cfg["allow_origins_by_regex"]; !ok {
+		t.Error("expected allow_origins_by_regex with credentials + wildcard origin")
+	}
+	if _, ok := cfg["allow_origins"]; ok {
+		t.Error("should not set allow_origins when using allow_origins_by_regex")
 	}
 }
 
@@ -1918,7 +2015,7 @@ func TestConvert_ProxyRedirect_NonSSL_Warning(t *testing.T) {
 
 // --- CORS max-age Removal Test ---
 
-func TestConvert_CORS_NoMaxAge(t *testing.T) {
+func TestConvert_CORS_DefaultMaxAge(t *testing.T) {
 	c := newTestConverter()
 	ing := makeTestIngress("cors-nomax", "default",
 		map[string]string{
@@ -1934,6 +2031,158 @@ func TestConvert_CORS_NoMaxAge(t *testing.T) {
 	// cors-max-age is NOT a native APISIX annotation, should not be set
 	if _, ok := out.Metadata.Annotations["k8s.apisix.apache.org/cors-max-age"]; ok {
 		t.Error("cors-max-age is not a native APISIX annotation and should not be set")
+	}
+
+	// PluginConfig should be created with ingress-nginx default max_age
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig for CORS, got %d", len(result.PluginConfigs))
+	}
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["max_age"] != 1728000 {
+		t.Errorf("expected default max_age=1728000, got %v", cfg["max_age"])
+	}
+}
+
+// --- Additional CORS Tests ---
+
+func TestConvert_CORS_ExplicitCredentialsFalse(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("cors-creds-false", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/enable-cors":            "true",
+			"nginx.ingress.kubernetes.io/cors-allow-credentials": "false",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig for CORS, got %d", len(result.PluginConfigs))
+	}
+
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["allow_credential"] != false {
+		t.Errorf("expected allow_credential=false, got %v", cfg["allow_credential"])
+	}
+	// Without credentials, allow_origins="*" is valid in APISIX
+	if v, ok := cfg["allow_origins"]; !ok || v != "*" {
+		t.Errorf("expected allow_origins=\"*\", got %v", v)
+	}
+	if _, ok := cfg["allow_origins_by_regex"]; ok {
+		t.Error("should not use allow_origins_by_regex when credentials are disabled")
+	}
+}
+
+func TestConvert_CORS_ExplicitMaxAge(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("cors-explicit-max", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/enable-cors":  "true",
+			"nginx.ingress.kubernetes.io/cors-max-age": "600",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["max_age"] != 600 {
+		t.Errorf("expected max_age=600, got %v", cfg["max_age"])
+	}
+}
+
+func TestConvert_CORS_ExposeHeaders(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("cors-expose", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/enable-cors":         "true",
+			"nginx.ingress.kubernetes.io/cors-expose-headers": "X-Custom-Header,X-Another",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["expose_headers"] != "X-Custom-Header,X-Another" {
+		t.Errorf("expected expose_headers=\"X-Custom-Header,X-Another\", got %v", cfg["expose_headers"])
+	}
+}
+
+func TestConvert_CORS_ExplicitOrigin_NoRegex(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("cors-explicit-origin", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/enable-cors":       "true",
+			"nginx.ingress.kubernetes.io/cors-allow-origin": "https://example.com",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	// With explicit origin + default credentials=true, should use allow_origins (not regex)
+	if v, ok := cfg["allow_origins"]; !ok || v != "https://example.com" {
+		t.Errorf("expected allow_origins=\"https://example.com\", got %v", v)
+	}
+	if _, ok := cfg["allow_origins_by_regex"]; ok {
+		t.Error("should not use allow_origins_by_regex when origin is explicitly set")
+	}
+}
+
+func TestConvert_CORS_FullCustom(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("cors-full", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/enable-cors":            "true",
+			"nginx.ingress.kubernetes.io/cors-allow-origin":      "https://myapp.com",
+			"nginx.ingress.kubernetes.io/cors-allow-methods":     "GET,POST",
+			"nginx.ingress.kubernetes.io/cors-allow-headers":     "Authorization",
+			"nginx.ingress.kubernetes.io/cors-allow-credentials": "true",
+			"nginx.ingress.kubernetes.io/cors-max-age":           "3600",
+			"nginx.ingress.kubernetes.io/cors-expose-headers":    "X-Total-Count",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["allow_origins"] != "https://myapp.com" {
+		t.Errorf("expected allow_origins=\"https://myapp.com\", got %v", cfg["allow_origins"])
+	}
+	if cfg["allow_methods"] != "GET,POST" {
+		t.Errorf("expected allow_methods=\"GET,POST\", got %v", cfg["allow_methods"])
+	}
+	if cfg["allow_headers"] != "Authorization" {
+		t.Errorf("expected allow_headers=\"Authorization\", got %v", cfg["allow_headers"])
+	}
+	if cfg["allow_credential"] != true {
+		t.Errorf("expected allow_credential=true, got %v", cfg["allow_credential"])
+	}
+	if cfg["max_age"] != 3600 {
+		t.Errorf("expected max_age=3600, got %v", cfg["max_age"])
+	}
+	if cfg["expose_headers"] != "X-Total-Count" {
+		t.Errorf("expected expose_headers=\"X-Total-Count\", got %v", cfg["expose_headers"])
 	}
 }
 
@@ -2041,7 +2290,7 @@ func TestConvert_RewriteTargetAndSnippet_PluginConfig(t *testing.T) {
 
 // --- Auth-secret without auth-type (no double warning) ---
 
-func TestWarning_AuthSecretWithoutAuthType(t *testing.T) {
+func TestConvert_AuthSecretWithoutAuthType_ProducesWarning(t *testing.T) {
 	c := newTestConverter()
 	ing := makeTestIngress("auth-secret-only", "default",
 		map[string]string{
@@ -2052,16 +2301,24 @@ func TestWarning_AuthSecretWithoutAuthType(t *testing.T) {
 	)
 
 	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
 
-	// auth-secret alone without auth-type → should warn about auth-secret needing ApisixConsumer
-	found := false
+	// auth-secret is NOT supported by AIC
+	if out.Metadata.Annotations["k8s.apisix.apache.org/auth-secret"] != "" {
+		t.Errorf("auth-secret should NOT be passed through, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/auth-secret"])
+	}
+
+	// Should produce a warning about auth-secret
+	foundWarn := false
 	for _, w := range result.Warnings {
 		if strings.Contains(w, "auth-secret") {
-			found = true
+			foundWarn = true
+			break
 		}
 	}
-	if !found {
-		t.Errorf("expected warning about auth-secret, got: %v", result.Warnings)
+	if !foundWarn {
+		t.Error("expected a warning about auth-secret not being supported")
 	}
 }
 
@@ -2084,9 +2341,9 @@ func TestConvert_IngressClassAnnotation_Nginx_Removed(t *testing.T) {
 	if _, ok := out.Metadata.Annotations["kubernetes.io/ingress.class"]; ok {
 		t.Error("kubernetes.io/ingress.class: nginx should be removed")
 	}
-	// CORS should still be converted
-	if out.Metadata.Annotations["k8s.apisix.apache.org/enable-cors"] != "true" {
-		t.Error("expected CORS annotation to be set")
+	// CORS should still be converted via ApisixPluginConfig
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig for CORS, got %d", len(result.PluginConfigs))
 	}
 }
 
@@ -2527,5 +2784,813 @@ func TestConvert_ProxyBodySize_ProducesPluginConfig(t *testing.T) {
 	out := result.Ingresses[0].(ingress.Ingress)
 	if out.Metadata.Annotations["k8s.apisix.apache.org/plugin-config-name"] != pc.Metadata.Name {
 		t.Error("client-control PluginConfig should be linked via annotation")
+	}
+}
+
+// --- New auto-conversion tests ---
+
+func TestConvert_LimitMultiplier_AppliesToRPS(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("limit-multi", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/limit-rps":        "10",
+			"nginx.ingress.kubernetes.io/limit-multiplier": "5",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["rate"] != "50" {
+		t.Errorf("expected rate=50 (10*5), got '%v'", cfg["rate"])
+	}
+}
+
+func TestConvert_LimitMultiplier_AppliesToRPM(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("limit-multi-rpm", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/limit-rpm":        "100",
+			"nginx.ingress.kubernetes.io/limit-multiplier": "2",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	// 100 rpm * 2 = 200 rpm, divided by 60 = ~3.333 rps
+	rate, ok := cfg["rate"].(float64)
+	if !ok {
+		t.Fatalf("expected rate to be a float64, got %T: %v", cfg["rate"], cfg["rate"])
+	}
+	if rate < 3.33 || rate > 3.34 {
+		t.Errorf("expected rate≈3.33 (200rpm/60), got %v", rate)
+	}
+}
+
+func TestConvert_LimitMultiplier_InvalidIgnored(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("limit-multi-invalid", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/limit-rps":        "10",
+			"nginx.ingress.kubernetes.io/limit-multiplier": "abc",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["rate"] != "10" {
+		t.Errorf("expected rate=10 (multiplier ignored), got '%v'", cfg["rate"])
+	}
+}
+
+func TestConvert_EnableAccessLog_Annotation(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("access-log", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/enable-access-log": "false",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
+
+	if out.Metadata.Annotations["k8s.apisix.apache.org/enable-access-log"] != "false" {
+		t.Errorf("expected enable-access-log=false, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/enable-access-log"])
+	}
+
+	// No warning for enable-access-log
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "enable-access-log") {
+			t.Errorf("should not warn about enable-access-log: %s", w)
+		}
+	}
+}
+
+func TestConvert_EnableAccessLog_True(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("access-log-true", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/enable-access-log": "true",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
+
+	if out.Metadata.Annotations["k8s.apisix.apache.org/enable-access-log"] != "true" {
+		t.Errorf("expected enable-access-log=true, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/enable-access-log"])
+	}
+}
+
+func TestConvert_RealIP_ProducesPluginConfig(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("real-ip", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/enable-real-ip": "true",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	p := result.PluginConfigs[0].Spec.Plugins[0]
+	if p.Name != "real-ip" {
+		t.Errorf("expected real-ip plugin, got '%s'", p.Name)
+	}
+	if !p.Enable {
+		t.Error("expected real-ip to be enabled")
+	}
+	cfg := p.Config.(map[string]interface{})
+	if cfg["source"] != "http_x_forwarded_for" {
+		t.Errorf("expected source=http_x_forwarded_for, got '%v'", cfg["source"])
+	}
+
+	// No warning for enable-real-ip
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "enable-real-ip") {
+			t.Errorf("should not warn about enable-real-ip: %s", w)
+		}
+	}
+}
+
+func TestConvert_RealIP_WithForwardedForHeader(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("real-ip-header", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/enable-real-ip":       "true",
+			"nginx.ingress.kubernetes.io/forwarded-for-header": "X-Real-IP",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["source"] != "http_x_real_ip" {
+		t.Errorf("expected source=http_x_real_ip, got '%v'", cfg["source"])
+	}
+}
+
+func TestConvert_UpstreamHashBy_ProducesBackendTrafficPolicy(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("hash-by", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/upstream-hash-by": "$remote_addr",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.BackendTrafficPolicies) != 1 {
+		t.Fatalf("expected 1 BackendTrafficPolicy, got %d", len(result.BackendTrafficPolicies))
+	}
+	btp := result.BackendTrafficPolicies[0]
+	if btp.Spec.LoadBalancer.Type != "chash" {
+		t.Errorf("expected chash, got %s", btp.Spec.LoadBalancer.Type)
+	}
+	if btp.Spec.LoadBalancer.HashOn != "vars" {
+		t.Errorf("expected hashOn=vars, got %s", btp.Spec.LoadBalancer.HashOn)
+	}
+	if btp.Spec.LoadBalancer.Key != "remote_addr" {
+		t.Errorf("expected key=remote_addr, got %s", btp.Spec.LoadBalancer.Key)
+	}
+}
+
+func TestConvert_UpstreamHashBy_ArgProducesQueryArg(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("hash-by-arg", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/upstream-hash-by": "$arg_user_id",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.BackendTrafficPolicies) != 1 {
+		t.Fatalf("expected 1 BackendTrafficPolicy, got %d", len(result.BackendTrafficPolicies))
+	}
+	btp := result.BackendTrafficPolicies[0]
+	if btp.Spec.LoadBalancer.HashOn != "vars" {
+		t.Errorf("expected hashOn=vars, got %s", btp.Spec.LoadBalancer.HashOn)
+	}
+	if btp.Spec.LoadBalancer.Key != "arg_user_id" {
+		t.Errorf("expected key=arg_user_id, got %s", btp.Spec.LoadBalancer.Key)
+	}
+
+	// upstream-hash-by should NOT produce a warning
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "upstream-hash-by") && strings.Contains(w, "无法自动转换") {
+			t.Fatalf("upstream-hash-by should now be auto-converted, got: %s", w)
+		}
+	}
+}
+
+func TestConvert_HealthCheck_ProducesApisixUpstream(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("health-check", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/health-check-path":     "/healthz",
+			"nginx.ingress.kubernetes.io/health-check-interval": "10",
+			"nginx.ingress.kubernetes.io/health-check-timeout":  "5",
+			"nginx.ingress.kubernetes.io/health-check-retries":  "3",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	// Health checks now go into ApisixUpstream, not BackendTrafficPolicy
+	if len(result.ApisixUpstreams) != 1 {
+		t.Fatalf("expected 1 ApisixUpstream, got %d", len(result.ApisixUpstreams))
+	}
+	au := result.ApisixUpstreams[0]
+	if au.Spec.HealthCheck == nil {
+		t.Fatal("expected healthCheck to be set")
+	}
+	if au.Spec.HealthCheck.Active == nil {
+		t.Fatal("expected healthCheck.active to be set")
+	}
+	active := au.Spec.HealthCheck.Active
+	if active.Type != "http" {
+		t.Errorf("expected type=http, got %s", active.Type)
+	}
+	if active.HTTPPath != "/healthz" {
+		t.Errorf("expected httpPath=/healthz, got %s", active.HTTPPath)
+	}
+	if active.Timeout != "5s" {
+		t.Errorf("expected timeout=5s, got %s", active.Timeout)
+	}
+	if active.Healthy == nil || active.Healthy.Successes != 3 {
+		t.Errorf("expected healthy.successes=3, got %v", active.Healthy)
+	}
+	if active.Healthy != nil && active.Healthy.Interval != "10s" {
+		t.Errorf("expected healthy.interval=10s, got %s", active.Healthy.Interval)
+	}
+	if active.Unhealthy == nil {
+		t.Fatal("expected unhealthy to be set")
+	}
+
+	// No warning for health-check
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "health-check") {
+			t.Errorf("should not warn about health-check: %s", w)
+		}
+	}
+}
+
+func TestConvert_SessionCookieExpires_ExtendsPlugin(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("cookie-expires", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/session-cookie-hash":    "sha1",
+			"nginx.ingress.kubernetes.io/session-cookie-name":    "escookie",
+			"nginx.ingress.kubernetes.io/session-cookie-expires": "3600",
+			"nginx.ingress.kubernetes.io/session-cookie-path":    "/app",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["max_age"] != 3600 {
+		t.Errorf("expected max_age=3600, got %v", cfg["max_age"])
+	}
+	if cfg["cookie_path"] != "/app" {
+		t.Errorf("expected cookie_path=/app, got %v", cfg["cookie_path"])
+	}
+}
+
+func TestConvert_SessionCookieMaxAge_TakesPriorityOverExpires(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("cookie-maxage", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/session-cookie-hash":    "sha1",
+			"nginx.ingress.kubernetes.io/session-cookie-name":    "escookie",
+			"nginx.ingress.kubernetes.io/session-cookie-expires": "3600",
+			"nginx.ingress.kubernetes.io/session-cookie-max-age": "7200",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["max_age"] != 7200 {
+		t.Errorf("expected max_age=7200 (max-age takes priority), got %v", cfg["max_age"])
+	}
+}
+
+func TestConvert_SessionCookieConditionalSameSiteNone_Warns(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("cookie-samesite", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/session-cookie-hash":                      "sha1",
+			"nginx.ingress.kubernetes.io/session-cookie-name":                      "escookie",
+			"nginx.ingress.kubernetes.io/session-cookie-conditional-samesite-none": "true",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	foundWarn := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "session-cookie-conditional-samesite-none") {
+			foundWarn = true
+		}
+	}
+	if !foundWarn {
+		t.Errorf("expected warning for session-cookie-conditional-samesite-none, got: %v", result.Warnings)
+	}
+}
+
+func TestConvert_SSLVerify_False_NoPlugin(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("ssl-verify", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/ssl-verify": "false",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	// ssl-verify=false produces a warning (not a PluginConfig)
+	foundWarn := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "ssl-verify") {
+			foundWarn = true
+		}
+	}
+	if !foundWarn {
+		t.Errorf("expected warning for ssl-verify, got: %v", result.Warnings)
+	}
+}
+
+func TestConvert_AuthRealm_NoExtraPluginConfig(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("auth-realm-test", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/auth-type":  "basic",
+			"nginx.ingress.kubernetes.io/auth-realm": "My Site",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
+
+	// auth-type=basic → native APISIX auth-type annotation
+	if out.Metadata.Annotations["k8s.apisix.apache.org/auth-type"] != "basicAuth" {
+		t.Errorf("expected auth-type=basicAuth, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/auth-type"])
+	}
+
+	// auth-realm → now auto-converted to native AIC annotation
+	if out.Metadata.Annotations["k8s.apisix.apache.org/auth-realm"] != "My Site" {
+		t.Errorf("expected auth-realm=My Site, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/auth-realm"])
+	}
+}
+
+func TestConvert_ComputeFullForwardedFor_Warns(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("compute-ff", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/enable-real-ip":             "true",
+			"nginx.ingress.kubernetes.io/compute-full-forwarded-for": "true",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	// Should produce real-ip plugin
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	if result.PluginConfigs[0].Spec.Plugins[0].Name != "real-ip" {
+		t.Errorf("expected real-ip plugin, got '%s'",
+			result.PluginConfigs[0].Spec.Plugins[0].Name)
+	}
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	if cfg["trusted_addresses"] == nil {
+		t.Error("expected trusted_addresses to be set")
+	}
+
+	// Should produce a warning about compute-full-forwarded-for
+	foundWarn := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "compute-full-forwarded-for") {
+			foundWarn = true
+			break
+		}
+	}
+	if !foundWarn {
+		t.Error("expected a warning about compute-full-forwarded-for")
+	}
+}
+
+func TestConvert_AuthRealm_ProducesAnnotation(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("auth-realm-annot", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/auth-realm": "401: Authentication Required",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
+
+	// auth-realm is now auto-converted → should produce native APISIX annotation
+	if out.Metadata.Annotations["k8s.apisix.apache.org/auth-realm"] != "401: Authentication Required" {
+		t.Errorf("expected auth-realm annotation, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/auth-realm"])
+	}
+
+	// Should NOT produce a warning
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "auth-realm") && strings.Contains(w, "无法自动转换") {
+			t.Errorf("should not warn about auth-realm anymore: %s", w)
+		}
+	}
+}
+
+func TestConvert_DenylistSourceRange_ProducesAnnotation(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("denylist", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/denylist-source-range": "10.0.0.0/8,172.16.0.0/12",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
+
+	if out.Metadata.Annotations["k8s.apisix.apache.org/blocklist-source-range"] != "10.0.0.0/8,172.16.0.0/12" {
+		t.Errorf("expected blocklist-source-range, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/blocklist-source-range"])
+	}
+}
+
+func TestConvert_PermanentRedirect_ProducesAnnotation(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("perm-redirect", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/permanent-redirect": "https://new.example.com",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
+
+	if out.Metadata.Annotations["k8s.apisix.apache.org/http-redirect"] != "https://new.example.com" {
+		t.Errorf("expected http-redirect, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/http-redirect"])
+	}
+	if out.Metadata.Annotations["k8s.apisix.apache.org/http-redirect-code"] != "308" {
+		t.Errorf("expected http-redirect-code=308, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/http-redirect-code"])
+	}
+}
+
+func TestConvert_TemporalRedirect_ProducesAnnotation(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("temp-redirect", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/temporal-redirect": "https://maintenance.example.com",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
+
+	if out.Metadata.Annotations["k8s.apisix.apache.org/http-redirect"] != "https://maintenance.example.com" {
+		t.Errorf("expected http-redirect, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/http-redirect"])
+	}
+	if out.Metadata.Annotations["k8s.apisix.apache.org/http-redirect-code"] != "302" {
+		t.Errorf("expected http-redirect-code=302, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/http-redirect-code"])
+	}
+}
+
+func TestConvert_AppRoot_ProducesAnnotation(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("app-root", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/app-root": "/app",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
+
+	if out.Metadata.Annotations["k8s.apisix.apache.org/http-redirect"] != "/app" {
+		t.Errorf("expected http-redirect=/app, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/http-redirect"])
+	}
+}
+
+func TestConvert_CustomHttpErrors_ProducesAnnotation(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("custom-errs", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/custom-http-errors": "404,500,503",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
+
+	if out.Metadata.Annotations["k8s.apisix.apache.org/custom-error-codes"] != "404,500,503" {
+		t.Errorf("expected custom-error-codes=404,500,503, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/custom-error-codes"])
+	}
+
+	// Should not produce any warnings about this annotation
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "custom-http-errors") {
+			t.Errorf("unexpected warning about custom-http-errors: %s", w)
+		}
+	}
+}
+
+func TestConvert_KeepaliveAnnotations_ProducesWarning(t *testing.T) {
+	yamlData := []byte(`
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keepalive-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/upstream-keepalive-connections: "64"
+    nginx.ingress.kubernetes.io/upstream-keepalive-requests: "1000"
+    nginx.ingress.kubernetes.io/upstream-keepalive-timeout: "60"
+spec:
+  rules:
+    - host: keepalive.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keepalive-svc
+                port:
+                  number: 80
+`)
+	input, err := ParseIngressYAML(yamlData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestConverter()
+	result := c.ConvertList(input)
+
+	// Keepalive annotations are NOT supported by AIC ApisixUpstream CRD
+	// So no ApisixUpstream should be produced
+	if len(result.ApisixUpstreams) != 0 {
+		t.Fatalf("expected 0 ApisixUpstreams (keepalive not supported by AIC), got %d", len(result.ApisixUpstreams))
+	}
+
+	// Should produce a warning about keepalive not being supported
+	foundWarn := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "upstream-keepalive") && strings.Contains(w, "不支持") {
+			foundWarn = true
+			break
+		}
+	}
+	if !foundWarn {
+		t.Error("expected a warning about upstream-keepalive not being supported by AIC")
+	}
+}
+
+func TestConvert_NoKeepaliveAnnotations_NoApisixUpstream(t *testing.T) {
+	yamlData := []byte(`
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: no-keepalive-ingress
+  namespace: default
+spec:
+  rules:
+    - host: nokeepalive.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: svc1
+                port:
+                  number: 80
+`)
+	input, err := ParseIngressYAML(yamlData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestConverter()
+	result := c.ConvertList(input)
+
+	if len(result.ApisixUpstreams) != 0 {
+		t.Errorf("expected 0 ApisixUpstreams when no keepalive annotations, got %d", len(result.ApisixUpstreams))
+	}
+}
+
+func TestConvert_TlsSection_ProducesApisixTls(t *testing.T) {
+	yamlData := []byte(`
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tls-ingress
+  namespace: default
+spec:
+  tls:
+    - hosts:
+        - secure.example.com
+        - alt.example.com
+      secretName: my-tls-secret
+  rules:
+    - host: secure.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tls-svc
+                port:
+                  number: 443
+`)
+	input, err := ParseIngressYAML(yamlData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestConverter()
+	result := c.ConvertList(input)
+
+	if len(result.ApisixTls) != 1 {
+		t.Fatalf("expected 1 ApisixTls, got %d", len(result.ApisixTls))
+	}
+
+	atls := result.ApisixTls[0]
+	if atls.Kind != "ApisixTls" {
+		t.Errorf("expected Kind=ApisixTls, got %s", atls.Kind)
+	}
+	if len(atls.Spec.Hosts) != 2 {
+		t.Errorf("expected 2 hosts, got %d", len(atls.Spec.Hosts))
+	}
+	if atls.Spec.Secret.Name != "my-tls-secret" {
+		t.Errorf("expected secret name my-tls-secret, got %s", atls.Spec.Secret.Name)
+	}
+	if atls.Spec.Secret.Namespace != "default" {
+		t.Errorf("expected secret namespace default, got %s", atls.Spec.Secret.Namespace)
+	}
+	if atls.Spec.IngressClassName == "" {
+		t.Error("expected IngressClassName to be set")
+	}
+}
+
+func TestConvert_NoTlsSection_NoApisixTls(t *testing.T) {
+	yamlData := []byte(`
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: notls-ingress
+  namespace: default
+spec:
+  rules:
+    - host: plain.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: svc1
+                port:
+                  number: 80
+`)
+	input, err := ParseIngressYAML(yamlData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestConverter()
+	result := c.ConvertList(input)
+
+	if len(result.ApisixTls) != 0 {
+		t.Errorf("expected 0 ApisixTls when no TLS section, got %d", len(result.ApisixTls))
+	}
+}
+
+func TestConvert_MultipleTlsEntries_ProducesMultipleApisixTls(t *testing.T) {
+	yamlData := []byte(`
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: multi-tls-ingress
+  namespace: default
+spec:
+  tls:
+    - hosts:
+        - a.example.com
+      secretName: secret-a
+    - hosts:
+        - b.example.com
+        - c.example.com
+      secretName: secret-b
+  rules:
+    - host: a.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: svc1
+                port:
+                  number: 80
+`)
+	input, err := ParseIngressYAML(yamlData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestConverter()
+	result := c.ConvertList(input)
+
+	if len(result.ApisixTls) != 2 {
+		t.Fatalf("expected 2 ApisixTls, got %d", len(result.ApisixTls))
+	}
+
+	if result.ApisixTls[0].Spec.Secret.Name != "secret-a" {
+		t.Errorf("first TLS: expected secret name secret-a, got %s", result.ApisixTls[0].Spec.Secret.Name)
+	}
+	if result.ApisixTls[1].Spec.Secret.Name != "secret-b" {
+		t.Errorf("second TLS: expected secret name secret-b, got %s", result.ApisixTls[1].Spec.Secret.Name)
+	}
+	if len(result.ApisixTls[1].Spec.Hosts) != 2 {
+		t.Errorf("second TLS: expected 2 hosts, got %d", len(result.ApisixTls[1].Spec.Hosts))
 	}
 }
