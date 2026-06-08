@@ -16,3 +16,4 @@ examples/output.yaml
 *.dylib
 *.test
 *.out
+/web/node_modules/
