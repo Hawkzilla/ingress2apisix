@@ -202,9 +202,10 @@ var handledAnnotations = map[string]bool{
 	// proxy-cookie-path → proxy-cookie-path custom plugin
 	"proxy-cookie-path": true,
 	// Rate limiting → PluginConfig (no native APISIX annotation for these)
-	"limit-rps":         true,
-	"limit-rpm":         true,
-	"limit-connections": true,
+	"limit-rps":              true,
+	"limit-rpm":              true,
+	"limit-connections":      true,
+	"limit-burst-multiplier": true,
 	// limit-multiplier → multiplies limit-rps/limit-rpm values
 	"limit-multiplier": true,
 	// proxy-body-size → client-control plugin
@@ -295,6 +296,26 @@ var knownManualAnnotations = map[string]string{
 	"upstream-keepalive-connections": "AIC ApisixUpstream CRD 不支持 keepalive；需在 APISIX 全局配置中设置",
 	"upstream-keepalive-requests":    "AIC ApisixUpstream CRD 不支持 keepalive；需在 APISIX 全局配置中设置",
 	"upstream-keepalive-timeout":     "AIC ApisixUpstream CRD 不支持 keepalive；需在 APISIX 全局配置中设置",
+}
+
+// crdExamples provides complete CRD YAML examples for specific annotations that
+// require manual migration. Displayed with syntax highlighting in the output.
+var crdExamples = map[string]string{
+	"auth-secret": `apiVersion: apisix.apache.org/v2
+kind: ApisixConsumer
+metadata:
+  name: <name>                # 对应原 auth-secret 引用的 Secret 名
+spec:
+  authentications:
+  - name: basic-auth
+    basicAuth:
+      value:
+        username: <username>  # kubectl get secret <name> -o jsonpath='{.data.username}' | base64 -d
+        password: <password>  # kubectl get secret <name> -o jsonpath='{.data.password}' | base64 -d
+---
+# 在 Ingress 上添加以下注解:
+#   k8s.apisix.apache.org/auth-type: basic-auth
+#   k8s.apisix.apache.org/auth-consumer: <ApisixConsumer 名>`,
 }
 
 // buildConvertedIngress copies the Ingress, replaces nginx annotations with
@@ -390,6 +411,13 @@ func (c *Converter) warnUnhandledAnnotations(ing ingress.Ingress, result *apisix
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("[%s/%s] 注解 %s 无法自动转换: %s",
 					ing.Metadata.Namespace, ing.Metadata.Name, k, hint))
+			// Add CRD example hints for specific annotations
+			if crd, ok := crdExamples[suffix]; ok {
+				if result.CRDHints == nil {
+					result.CRDHints = make(map[string]string)
+				}
+				result.CRDHints[suffix] = crd
+			}
 			continue
 		}
 
@@ -400,12 +428,8 @@ func (c *Converter) warnUnhandledAnnotations(ing ingress.Ingress, result *apisix
 	}
 
 	// Also check for configuration-snippet content that wasn't rewrite
+	// Note: add_header and more_set_headers are now auto-converted to response-rewrite plugin
 	if snippet, ok := getAnnotation(ing.Metadata.Annotations, "configuration-snippet"); ok {
-		if strings.Contains(snippet, "more_set_headers") && !seen["more_set_headers_in_snippet"] {
-			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("[%s/%s] configuration-snippet 中包含 more_set_headers，建议使用 ApisixPluginConfig + proxy-rewrite 插件实现，参见迁移文档 4.1.5",
-					ing.Metadata.Namespace, ing.Metadata.Name))
-		}
 		if strings.Contains(snippet, "custom-http-errors") && !seen["custom_http_errors_in_snippet"] {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("[%s/%s] configuration-snippet 中包含自定义错误处理，需自定义 Lua 插件，参见迁移文档 4.1.3",
@@ -439,8 +463,8 @@ func (c *Converter) convertAnnotations(src, out map[string]string, sources map[s
 	// No AIC annotations are emitted here to avoid duplicate/conflicting CORS config.
 
 	// --- SSL redirect → http-to-https ---
-	if v, ok := getAnnotation(src, "ssl-redirect"); ok && v == "true" {
-		out["k8s.apisix.apache.org/http-to-https"] = "true"
+	if v, ok := getAnnotation(src, "ssl-redirect"); ok {
+		out["k8s.apisix.apache.org/http-to-https"] = v
 		if sources != nil {
 			sources["k8s.apisix.apache.org/http-to-https"] = srcAnnot(src, "ssl-redirect")
 		}
@@ -464,25 +488,8 @@ func (c *Converter) convertAnnotations(src, out map[string]string, sources map[s
 		}
 	}
 
-	combinedRewrite := hasCombinedRewrite(src)
-
-	// --- Rewrite target ---
-	if v, ok := getAnnotation(src, "rewrite-target"); ok && !combinedRewrite {
-		if regexCapturePattern.MatchString(v) {
-			out["k8s.apisix.apache.org/rewrite-target-regex"] = v
-			out["k8s.apisix.apache.org/rewrite-target-regex-template"] = v
-			if sources != nil {
-				s := srcAnnot(src, "rewrite-target")
-				sources["k8s.apisix.apache.org/rewrite-target-regex"] = s
-				sources["k8s.apisix.apache.org/rewrite-target-regex-template"] = s
-			}
-		} else {
-			out["k8s.apisix.apache.org/rewrite-target"] = v
-			if sources != nil {
-				sources["k8s.apisix.apache.org/rewrite-target"] = srcAnnot(src, "rewrite-target")
-			}
-		}
-	}
+	// --- Rewrite target: always use proxy-rewrite plugin in PluginConfig ---
+	// rewrite-target and configuration-snippet rewrites are handled by buildPluginConfig
 
 	// --- Proxy timeouts → upstream timeouts with 's' suffix ---
 	if v, ok := getAnnotation(src, "proxy-connect-timeout"); ok {
@@ -655,21 +662,7 @@ func (c *Converter) convertAnnotations(src, out map[string]string, sources map[s
 		}
 	}
 
-	// --- configuration-snippet: single rewrite → native rewrite-target-regex annotations ---
-	if snippet, ok := getAnnotation(src, "configuration-snippet"); ok && !combinedRewrite {
-		rewriteURIs := c.extractRewriteURIs(snippet)
-		if len(rewriteURIs) == 2 {
-			// Single rewrite directive → use native APISIX annotations
-			out["k8s.apisix.apache.org/rewrite-target-regex"] = rewriteURIs[0]
-			out["k8s.apisix.apache.org/rewrite-target-regex-template"] = rewriteURIs[1]
-			if sources != nil {
-				s := srcAnnot(src, "configuration-snippet")
-				sources["k8s.apisix.apache.org/rewrite-target-regex"] = s
-				sources["k8s.apisix.apache.org/rewrite-target-regex-template"] = s
-			}
-		}
-		// Multiple rewrites (len > 2) are handled by buildPluginConfig
-	}
+	// --- configuration-snippet: rewrites are handled by buildPluginConfig ---
 }
 
 func hasCombinedRewrite(annotations map[string]string) bool {
@@ -706,7 +699,45 @@ func (c *Converter) buildPluginConfig(ing ingress.Ingress, ns string) (*apisix.A
 
 	// --- Rate limiting → limit-req plugin ---
 	// APISIX has no native annotation for rate limiting, so PluginConfig is needed.
+	// ingress-nginx burst = rate × limit-burst-multiplier (default 5).
+	// APISIX limit-req burst is in rps, so divide nginx burst by 60 for rpm-based limits.
+	// When both limit-rps and limit-rpm are set, ingress-nginx generates two limit_req_zones
+	// (both enforced). APISIX only allows one limit-req plugin, so we take the more restrictive.
+	// Ref: https://github.com/kubernetes/ingress-nginx/blob/main/internal/ingress/annotations/ratelimit/main.go
+	burstMultiplier := 5.0
+	if bm, ok := getAnnotation(anns, "limit-burst-multiplier"); ok {
+		if parsed, err := strconv.ParseFloat(strings.TrimSpace(bm), 64); err == nil && parsed > 0 {
+			burstMultiplier = parsed
+		}
+	}
+
+	// Parse both rate limit values, convert to rps
+	var rpsVal, rpmVal float64
+	var hasRPS, hasRPM bool
 	if v, ok := getAnnotation(anns, "limit-rps"); ok && v != "" {
+		rateValue := applyLimitMultiplier(v, anns)
+		if f, err := strconv.ParseFloat(strings.TrimSpace(rateValue), 64); err == nil {
+			rpsVal = f
+			hasRPS = true
+		} else {
+			warnings = append(warnings,
+				fmt.Sprintf("[%s/%s] limit-rps=%q 无法解析为数字",
+					ing.Metadata.Namespace, ing.Metadata.Name, rateValue))
+		}
+	}
+	if v, ok := getAnnotation(anns, "limit-rpm"); ok && v != "" {
+		rateBase := applyLimitMultiplier(v, anns)
+		if f, err := strconv.ParseFloat(strings.TrimSpace(rateBase), 64); err == nil {
+			rpmVal = f
+			hasRPM = true
+		} else {
+			warnings = append(warnings,
+				fmt.Sprintf("[%s/%s] limit-rpm=%q 无法解析为数字",
+					ing.Metadata.Namespace, ing.Metadata.Name, rateBase))
+		}
+	}
+
+	if hasRPS || hasRPM {
 		rejectedCode := "429"
 		if snippet, ok := getAnnotation(anns, "configuration-snippet"); ok {
 			re := regexp.MustCompile(`limit_req_status\s+(\d{3})`)
@@ -714,49 +745,50 @@ func (c *Converter) buildPluginConfig(ing ingress.Ingress, ns string) (*apisix.A
 				rejectedCode = m[1]
 			}
 		}
-		rateValue := applyLimitMultiplier(v, anns)
+
+		// Determine effective rate in rps and source annotation
+		var effectiveRPS float64
+		var rateSrc string
+		if hasRPS && hasRPM {
+			rpsFromRPM := rpmVal / 60.0
+			if rpsFromRPM < rpsVal {
+				effectiveRPS = rpsFromRPM
+				rateSrc = srcAnnot(anns, "limit-rpm") + " (more restrictive)"
+			} else {
+				effectiveRPS = rpsVal
+				rateSrc = srcAnnot(anns, "limit-rps") + " (more restrictive)"
+			}
+			warnings = append(warnings,
+				fmt.Sprintf("[%s/%s] limit-rps 和 limit-rpm 同时设置，ingress-nginx 会同时生效（取交集），APISIX 仅支持单个 limit-req 插件，已取更严格的限制 (rps=%v, rpm=%v → effective=%v rps)",
+					ing.Metadata.Namespace, ing.Metadata.Name, rpsVal, rpmVal, effectiveRPS))
+		} else if hasRPS {
+			effectiveRPS = rpsVal
+			rateSrc = srcAnnot(anns, "limit-rps")
+		} else {
+			effectiveRPS = rpmVal / 60.0
+			rateSrc = srcAnnot(anns, "limit-rpm")
+		}
+
+		burst := int(effectiveRPS * burstMultiplier)
 		plugins = append(plugins, apisix.Plugin{
 			Name:   "limit-req",
 			Enable: true,
 			Config: map[string]interface{}{
-				"rate":          rateValue,
-				"burst":         0,
+				"rate":          effectiveRPS,
+				"burst":         burst,
 				"key":           "remote_addr",
 				"rejected_code": rejectedCode,
 			},
 		})
-		pluginSources["limit-req"] = srcAnnot(anns, "limit-rps")
-		pluginFieldDefaults["limit-req.burst"] = "DEFAULT_HINT:hardcoded, same as nginx default"
-		pluginFieldDefaults["limit-req.key"] = "DEFAULT_HINT:hardcoded, same as nginx default"
-		if rejectedCode == "429" {
-			pluginFieldDefaults["limit-req.rejected_code"] = "DEFAULT_HINT:hardcoded, same as nginx default"
+		pluginSources["limit-req"] = rateSrc
+		if _, ok := getAnnotation(anns, "limit-burst-multiplier"); !ok {
+			pluginFieldDefaults["limit-req.burst"] = fmt.Sprintf(
+				"DEFAULT_HINT:burst=%.0f×%.0f=%v, formula=rate×burst-multiplier (default 5) | src: github.com/kubernetes/ingress-nginx/internal/ingress/annotations/ratelimit/main.go",
+				effectiveRPS, burstMultiplier, burst)
 		}
-	} else if v, ok := getAnnotation(anns, "limit-rpm"); ok && v != "" {
-		rejectedCode := "429"
-		rateBase := applyLimitMultiplier(v, anns)
-		// APISIX limit-req schema requires rate as requests/sec (number).
-		// Convert rpm to rps by dividing by 60.
-		rateFloat, err := strconv.ParseFloat(strings.TrimSpace(rateBase), 64)
-		if err != nil {
-			warnings = append(warnings,
-				fmt.Sprintf("[%s/%s] limit-rpm=%q 无法解析为数字",
-					ing.Metadata.Namespace, ing.Metadata.Name, rateBase))
-		} else {
-			rps := rateFloat / 60.0
-			plugins = append(plugins, apisix.Plugin{
-				Name:   "limit-req",
-				Enable: true,
-				Config: map[string]interface{}{
-					"rate":          rps,
-					"burst":         0,
-					"key":           "remote_addr",
-					"rejected_code": rejectedCode,
-				},
-			})
-			pluginSources["limit-req"] = srcAnnot(anns, "limit-rpm")
-			pluginFieldDefaults["limit-req.burst"] = "DEFAULT_HINT:hardcoded, same as nginx default"
-			pluginFieldDefaults["limit-req.key"] = "DEFAULT_HINT:hardcoded, same as nginx default"
-			pluginFieldDefaults["limit-req.rejected_code"] = "DEFAULT_HINT:hardcoded, same as nginx default"
+		pluginFieldDefaults["limit-req.key"] = "DEFAULT_HINT:hardcoded, same as nginx default (remote_addr)"
+		if rejectedCode == "429" {
+			pluginFieldDefaults["limit-req.rejected_code"] = "DEFAULT_HINT:hardcoded, same as nginx default (503 in ingress-nginx, 429 in APISIX)"
 		}
 	}
 
@@ -811,26 +843,23 @@ func (c *Converter) buildPluginConfig(ing ingress.Ingress, ns string) (*apisix.A
 		}
 	}
 
-	// --- Complex rewrite: multiple rewrites or rewrite-target + snippet rewrites ---
+	// --- Rewrite: always use proxy-rewrite plugin ---
 	if rewriteURIs := c.buildProxyRewriteURIs(ing); len(rewriteURIs) > 0 {
-		if len(rewriteURIs) > 2 || hasCombinedRewrite(anns) {
-			plugins = append(plugins, apisix.Plugin{
-				Name:   "proxy-rewrite",
-				Enable: true,
-				Config: map[string]interface{}{
-					"regex_uri": rewriteURIs,
-				},
-			})
-			var srcs []string
-			if _, ok := getAnnotation(anns, "rewrite-target"); ok {
-				srcs = append(srcs, srcAnnot(anns, "rewrite-target"))
-			}
-			if _, ok := getAnnotation(anns, "configuration-snippet"); ok {
-				srcs = append(srcs, srcAnnot(anns, "configuration-snippet"))
-			}
-			pluginSources["proxy-rewrite"] = strings.Join(srcs, ", ")
+		plugins = append(plugins, apisix.Plugin{
+			Name:   "proxy-rewrite",
+			Enable: true,
+			Config: map[string]interface{}{
+				"regex_uri": rewriteURIs,
+			},
+		})
+		var srcs []string
+		if _, ok := getAnnotation(anns, "rewrite-target"); ok {
+			srcs = append(srcs, srcAnnot(anns, "rewrite-target"))
 		}
-		// Single snippet rewrite without rewrite-target is handled as native annotation above.
+		if _, ok := getAnnotation(anns, "configuration-snippet"); ok {
+			srcs = append(srcs, srcAnnot(anns, "configuration-snippet"))
+		}
+		pluginSources["proxy-rewrite"] = strings.Join(srcs, ", ")
 	}
 
 	// --- proxy-redirect-from/to: non-SSL redirects need manual handling ---
@@ -875,6 +904,39 @@ func (c *Converter) buildPluginConfig(ing ingress.Ingress, ns string) (*apisix.A
 				},
 			})
 			pluginSources["proxy-cookie-flags"] = srcAnnot(anns, "configuration-snippet")
+		}
+	}
+
+	// --- add_header / more_set_headers in configuration-snippet → response-rewrite plugin ---
+	if snippet, ok := getAnnotation(anns, "configuration-snippet"); ok {
+		addHeaders := parseAddHeaders(snippet)
+		moreHeaders := parseMoreSetHeaders(snippet)
+		// Merge: more_set_headers overrides add_header for same key
+		merged := make(map[string]string)
+		for k, v := range addHeaders {
+			merged[k] = v
+		}
+		for k, v := range moreHeaders {
+			merged[k] = v
+		}
+		if len(merged) > 0 {
+			plugins = append(plugins, apisix.Plugin{
+				Name:   "response-rewrite",
+				Enable: true,
+				Config: map[string]interface{}{
+					"headers": map[string]interface{}{
+						"set": merged,
+					},
+				},
+			})
+			var srcs []string
+			if len(addHeaders) > 0 {
+				srcs = append(srcs, "add_header")
+			}
+			if len(moreHeaders) > 0 {
+				srcs = append(srcs, "more_set_headers")
+			}
+			pluginSources["response-rewrite"] = srcAnnot(anns, "configuration-snippet") + " (" + strings.Join(srcs, ", ") + ")"
 		}
 	}
 
@@ -1139,7 +1201,7 @@ func (c *Converter) buildPluginConfig(ing ingress.Ingress, ns string) (*apisix.A
 	if v, ok := getAnnotation(anns, "ssl-verify"); ok {
 		if v == "false" {
 			warnings = append(warnings,
-				fmt.Sprintf("[%s/%s] ssl-verify=false 已识别；APISIX 默认不验证上游 TLS 证书。如需显式控制，请在 ApisixUpstream CRD 中配置 tls.client_cert/tls.client_key",
+				fmt.Sprintf("[%s/%s] ssl-verify=false 已识别；APISIX 默认不验证上游 TLS 证书。",
 					ing.Metadata.Namespace, ing.Metadata.Name))
 		} else {
 			warnings = append(warnings,
@@ -1620,7 +1682,8 @@ func (c *Converter) buildProxyRewriteURIs(ing ingress.Ingress) []string {
 	}
 
 	var uris []string
-	if target, ok := getAnnotation(anns, "rewrite-target"); ok && hasCombinedRewrite(anns) {
+	// Always handle rewrite-target via proxy-rewrite plugin
+	if target, ok := getAnnotation(anns, "rewrite-target"); ok {
 		uris = append(uris, rewriteTargetURIs(ing, target)...)
 	}
 
@@ -1696,6 +1759,78 @@ func parseProxyCookieFlags(snippet string) []map[string]interface{} {
 		})
 	}
 	return rules
+}
+
+// parseAddHeaders parses add_header directives from a configuration-snippet
+// into a header name → value map suitable for the response-rewrite plugin.
+//
+// nginx syntax: add_header <name> <value> [always];
+// Examples:
+//
+//	add_header Content-Security-Policy "default-src 'self';" always;
+//	add_header X-Frame-Options "SAMEORIGIN";
+//	add_header X-Custom-Header plain-value;
+//
+// The "always" flag is ignored (APISIX response-rewrite always applies).
+// Variables ($var) in values are preserved as-is (no expansion).
+func parseAddHeaders(snippet string) map[string]string {
+	re := regexp.MustCompile(`add_header\s+(\S+)\s+"([^"]*)"(?:\s+always)?\s*;`)
+	matches := re.FindAllStringSubmatch(snippet, -1)
+
+	headers := make(map[string]string)
+	for _, m := range matches {
+		if len(m) >= 3 {
+			headers[m[1]] = m[2]
+		}
+	}
+
+	// Also handle unquoted values: add_header Name Value [always];
+	reUnquoted := regexp.MustCompile(`add_header\s+(\S+)\s+([^";\s]+)(?:\s+always)?\s*;`)
+	for _, m := range reUnquoted.FindAllStringSubmatch(snippet, -1) {
+		if len(m) >= 3 {
+			name := m[1]
+			if _, exists := headers[name]; !exists {
+				headers[name] = m[2]
+			}
+		}
+	}
+
+	return headers
+}
+
+// parseMoreSetHeaders parses more_set_headers directives from a
+// configuration-snippet into a header name → value map.
+//
+// nginx syntax: more_set_headers "<name>: <value>" or more_set_headers "<name>";
+// Examples:
+//
+//	more_set_headers "X-Test: value";
+//	more_set_headers "X-Forwarded-For $http_x_forwarded_for";
+func parseMoreSetHeaders(snippet string) map[string]string {
+	re := regexp.MustCompile(`more_set_headers\s+"([^"]+)"\s*;`)
+	matches := re.FindAllStringSubmatch(snippet, -1)
+
+	headers := make(map[string]string)
+	for _, m := range matches {
+		if len(m) < 2 {
+			continue
+		}
+		parts := strings.SplitN(m[1], ":", 2)
+		if len(parts) == 2 {
+			name := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			if name != "" {
+				headers[name] = value
+			}
+		} else {
+			// No colon — treat entire value as header name with empty value
+			name := strings.TrimSpace(m[1])
+			if name != "" {
+				headers[name] = ""
+			}
+		}
+	}
+	return headers
 }
 
 // parseProxyCookiePath parses the ingress.kubernetes.io/proxy-cookie-path

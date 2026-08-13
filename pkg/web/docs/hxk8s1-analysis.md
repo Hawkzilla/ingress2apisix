@@ -42,21 +42,20 @@ abs-sit-2, abs-t-2, accs-dev, accs-sit2, agent-manager, agentplatform, agentplat
 |---|-----------|----------|--------|-----------------|
 | 1 | `use-regex` | 254 | `true` | `k8s.apisix.apache.org/use-regex` |
 | 2 | `backend-protocol` | 233 | `http` | `k8s.apisix.apache.org/upstream-scheme` |
-| 3 | `rewrite-target` | 41 | `/$2`, `/$1$2` 等 | `k8s.apisix.apache.org/rewrite-target` 或 `rewrite-target-regex` |
-| 4 | `proxy-read-timeout` | 35 | `90` | `k8s.apisix.apache.org/upstream-read-timeout` (自动加 `s`) |
-| 5 | `ssl-redirect` | 33 | `false` | `k8s.apisix.apache.org/http-to-https` |
-| 6 | `proxy-send-timeout` | 22 | `90` | `k8s.apisix.apache.org/upstream-send-timeout` |
-| 7 | `proxy-connect-timeout` | 14 | `90` | `k8s.apisix.apache.org/upstream-connect-timeout` |
-| 8 | `enable-access-log` | 3 | `true` | `k8s.apisix.apache.org/enable-access-log` |
-| 9 | `enable-cors` | 1 | `true` | `k8s.apisix.apache.org/enable-cors` |
-| 10 | `cors-allow-origin` | 1 | `$http_origin` | `k8s.apisix.apache.org/cors-allow-origin` |
-| 11 | `cors-allow-methods` | 1 | `GET,POST,...` | `k8s.apisix.apache.org/cors-allow-methods` |
-| 12 | `cors-allow-headers` | 1 | `Authorization,...` | `k8s.apisix.apache.org/cors-allow-headers` |
-| 13 | `whitelist-source-range` | 1 | `20.199...` | `k8s.apisix.apache.org/allowlist-source-range` |
-| 14 | `auth-type` | 1 | `basic` | `k8s.apisix.apache.org/auth-type` (basic→basicAuth) |
-| 15 | `auth-secret` | 1 | `ecms-basic-auth` | `k8s.apisix.apache.org/auth-secret` (需创建 ApisixConsumer) |
-| 16 | `auth-realm` | 1 | `401: Authentication Required` | `k8s.apisix.apache.org/auth-realm` (需 forward-auth 插件 realm 字段，已有 patch) |
-| 17 | `ingress.kubernetes.io/ssl-redirect` | 1 | `true` | `k8s.apisix.apache.org/http-to-https` |
+| 3 | `proxy-read-timeout` | 35 | `90` | `k8s.apisix.apache.org/upstream-read-timeout` (自动加 `s`) |
+| 4 | `ssl-redirect` | 33 | `false` | `k8s.apisix.apache.org/http-to-https` |
+| 5 | `proxy-send-timeout` | 22 | `90` | `k8s.apisix.apache.org/upstream-send-timeout` |
+| 6 | `proxy-connect-timeout` | 14 | `90` | `k8s.apisix.apache.org/upstream-connect-timeout` |
+| 7 | `enable-access-log` | 3 | `true` | `k8s.apisix.apache.org/enable-access-log` |
+| 8 | `enable-cors` | 1 | `true` | `k8s.apisix.apache.org/enable-cors` |
+| 9 | `cors-allow-origin` | 1 | `$http_origin` | `k8s.apisix.apache.org/cors-allow-origin` |
+| 10 | `cors-allow-methods` | 1 | `GET,POST,...` | `k8s.apisix.apache.org/cors-allow-methods` |
+| 11 | `cors-allow-headers` | 1 | `Authorization,...` | `k8s.apisix.apache.org/cors-allow-headers` |
+| 12 | `whitelist-source-range` | 1 | `20.199...` | `k8s.apisix.apache.org/allowlist-source-range` |
+| 13 | `auth-type` | 1 | `basic` | `k8s.apisix.apache.org/auth-type` (basic→basicAuth) |
+| 14 | `auth-secret` | 1 | `ecms-basic-auth` | `k8s.apisix.apache.org/auth-secret` (需创建 ApisixConsumer) |
+| 15 | `auth-realm` | 1 | `401: Authentication Required` | `k8s.apisix.apache.org/auth-realm` (需 forward-auth 插件 realm 字段，已有 patch) |
+| 16 | `ingress.kubernetes.io/ssl-redirect` | 1 | `true` | `k8s.apisix.apache.org/http-to-https` |
 
 #### A2 → ApisixPluginConfig（插件配置 CRD）
 
@@ -94,9 +93,9 @@ abs-sit-2, abs-t-2, accs-dev, accs-sit2, agent-manager, agentplatform, agentplat
 
 ---
 
-### B. 需开发AIC注解（APISIX 插件/CRD 已有，AIC 缺注解入口）
+### B. APISIX 插件/CRD 
 
-这些注解在 APISIX 中都有对应的插件或 CRD 能力，但 AIC（APISIX Ingress Controller）尚未提供原生注解映射。**不需要开发新插件，只需在 AIC 中新增注解定义和 handler。**
+这些注解在 APISIX 中都有对应的插件或 CRD 能力，但 AIC（APISIX Ingress Controller）尚未提供原生注解映射。
 
 | # | NGINX 注解 | 出现次数 | 典型值 | APISIX 等价物 | AIC 缺口 | 开发工作量 |
 |---|-----------|----------|--------|---------------|---------|-----------|
@@ -187,7 +186,7 @@ spec:
 ### C. 需插件适配（APISIX 无等价插件或功能不完整）
 
 | # | NGINX 注解 | 出现次数 | 典型值 | APISIX 现状 | 适配方案 | 工作量 |
-|---|-----------|----------|--------|------------|---------|--------|
+|:-:|-----------|----------|--------|------------|---------|--------|
 | 1 | `server-snippet` | 1 | 自定义 upstream 块 | APISIX 无 server-level snippet | 内容为权重 upstream，可转为 ApisixUpstream CRD；复杂场景（if 逻辑等）需开发 snippet 解析插件 | 低~中 |
 | 2 | `proxy-request-buffering` | 2 | `off` | APISIX 无 per-route buffering 控制 | 需 APISIX 核心支持或 nginx_config snippet；可全局配置 | 低 |
 
@@ -251,6 +250,7 @@ nginx_config:
 | 高级功能 | `custom-http-errors`, `custom-headers`, `default-backend`, `server-alias`, `client-body-buffer-size`, `http2-push-preload`, `satisfy`, `stream-snippet`, `preserve-trailing-slash`, `connection-proxy-header`, `x-forwarded-prefix`, `load-balance`, `upstream-hash-by-subset`, `upstream-hash-by-subset-size` |
 
 > **说明：** 以上注解在 hxk8s1 集群中未使用，如果未来集群需要这些功能：
+>
 > - 认证增强类（auth-url 等）→ ingress2apisix 已支持自动转换
 > - 镜像类 → AIC 需开发 mirror 注解
 > - WAF 类 → 需部署 APISIX waf 插件
@@ -278,11 +278,11 @@ nginx_config:
 ### P0 — 预处理
 - 修正 2 处拼写错误（`configuration-snipper` → `configuration-snippet`, `proxy-http-verson` → `proxy-http-version`）
 
-### P1 — 直接转换（已完成）
+### P1 — 直接转换
 - 38 种注解直接运行 ingress2apisix 即可批量转换
 - 覆盖 345 个有注解 Ingress 中的绝大部分（top 5 注解占 229~254 个）
 
-### P2 — AIC 注解开发（预计 3~5 天）
+### P2 — AIC 注解开发
 按优先级排序：
 1. **affinity + session-cookie-name + affinity-mode** → BackendTrafficPolicy 注解（影响 4+3+2=9 个 Ingress）
 2. **upstream-keepalive-*** → BackendTrafficPolicy keepalive 注解（影响 4+7+6=17 个 Ingress）
@@ -291,10 +291,10 @@ nginx_config:
 5. **service-upstream** → 上游解析模式注解（影响 5 个 Ingress）
 6. **proxy-set-headers** → ConfigMap 引用注解（影响 1 个 Ingress）
 
-### P3 — 全局配置（预计 0.5 天）
+### P3 — 全局配置
 - 在 APISIX config.yaml 中添加 `proxy_buffering off; proxy_request_buffering off;`
 
-### P4 — server-snippet 处理（预计 0.5 天）
+### P4 — server-snippet 处理
 - hxk8s1 中仅 1 个 server-snippet，内容为权重 upstream，手动转为 ApisixUpstream CRD
 
 ---

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go test:*)",
+      "Bash(go build:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(cat:*)",
+      "WebFetch(domain:kubernetes.github.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebSearch",
+      "Bash(curl:*)",
+      "Bash(/tmp/ingress2apisix2:*)",
+      "WebFetch(domain:apisix.apache.org)"
+    ]
+  }
+}

@@ -218,7 +218,7 @@ func analyzeSnippetContent(snippet string) string {
 	// Check for more_set_headers
 	moreHeadersRe := regexp.MustCompile(`more_set_headers\s+`)
 	if moreHeadersRe.MatchString(snippet) {
-		parts = append(parts, "more_set_headers → 需 ApisixPluginConfig + proxy-rewrite 插件 (headers.set)，参见迁移文档 4.1.5")
+		parts = append(parts, "more_set_headers → 可自动转换为 response-rewrite 插件 (headers.set)")
 	}
 
 	// Check for limit_req_status
@@ -230,7 +230,7 @@ func analyzeSnippetContent(snippet string) string {
 	// Check for add_header
 	addHeaderRe := regexp.MustCompile(`add_header\s+`)
 	if addHeaderRe.MatchString(snippet) {
-		parts = append(parts, "add_header → 需 proxy-rewrite 或 response-rewrite 插件")
+		parts = append(parts, "add_header → 可自动转换为 response-rewrite 插件 (headers.set)")
 	}
 
 	// Check for proxy_set_header

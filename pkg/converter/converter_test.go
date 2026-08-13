@@ -545,6 +545,25 @@ func TestConvert_ForceSSLRedirect(t *testing.T) {
 	}
 }
 
+func TestConvert_SSLRedirectFalse(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("ssl-false", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/ssl-redirect": "false",
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+	out := result.Ingresses[0].(ingress.Ingress)
+
+	if out.Metadata.Annotations["k8s.apisix.apache.org/http-to-https"] != "false" {
+		t.Errorf("expected http-to-https=false, got '%s'",
+			out.Metadata.Annotations["k8s.apisix.apache.org/http-to-https"])
+	}
+}
+
 func TestConvert_SSLRedirectDisabled(t *testing.T) {
 	opts := apisix.DefaultConversionOptions()
 	opts.SSLRedirect = false
@@ -626,13 +645,25 @@ func TestConvert_RewriteTarget_Simple(t *testing.T) {
 	)
 
 	result := c.Convert(ing)
-	out := result.Ingresses[0].(ingress.Ingress)
 
-	if out.Metadata.Annotations["k8s.apisix.apache.org/rewrite-target"] != "/" {
-		t.Error("expected simple rewrite-target")
+	// Should produce proxy-rewrite plugin in PluginConfig
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
 	}
-	if _, ok := out.Metadata.Annotations["k8s.apisix.apache.org/rewrite-target-regex"]; ok {
-		t.Error("should not set rewrite-target-regex for simple target")
+	p := result.PluginConfigs[0].Spec.Plugins[0]
+	if p.Name != "proxy-rewrite" {
+		t.Fatalf("expected proxy-rewrite plugin, got %s", p.Name)
+	}
+	cfg := p.Config.(map[string]interface{})
+	regexURI := cfg["regex_uri"].([]string)
+	if len(regexURI) != 2 {
+		t.Fatalf("expected 2 regex_uri entries, got %d", len(regexURI))
+	}
+	if regexURI[0] != "(?i)/api" {
+		t.Errorf("expected regex_uri[0]='(?i)/api', got '%s'", regexURI[0])
+	}
+	if regexURI[1] != "/" {
+		t.Errorf("expected regex_uri[1]='/', got '%s'", regexURI[1])
 	}
 }
 
@@ -647,15 +678,25 @@ func TestConvert_RewriteTarget_Regex(t *testing.T) {
 	)
 
 	result := c.Convert(ing)
-	out := result.Ingresses[0].(ingress.Ingress)
 
-	// Per migration doc: rewrite-target with $1/$2 → rewrite-target-regex
-	if _, ok := out.Metadata.Annotations["k8s.apisix.apache.org/rewrite-target"]; ok {
-		t.Error("should not set simple rewrite-target for regex captures")
+	// Should produce proxy-rewrite plugin in PluginConfig
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
 	}
-	if out.Metadata.Annotations["k8s.apisix.apache.org/rewrite-target-regex"] != "/$2" {
-		t.Errorf("expected rewrite-target-regex='/$2', got '%s'",
-			out.Metadata.Annotations["k8s.apisix.apache.org/rewrite-target-regex"])
+	p := result.PluginConfigs[0].Spec.Plugins[0]
+	if p.Name != "proxy-rewrite" {
+		t.Fatalf("expected proxy-rewrite plugin, got %s", p.Name)
+	}
+	cfg := p.Config.(map[string]interface{})
+	regexURI := cfg["regex_uri"].([]string)
+	if len(regexURI) != 2 {
+		t.Fatalf("expected 2 regex_uri entries, got %d", len(regexURI))
+	}
+	if regexURI[0] != "(?i)/api(/|$)(.*)" {
+		t.Errorf("expected regex_uri[0]='(?i)/api(/|$)(.*)', got '%s'", regexURI[0])
+	}
+	if regexURI[1] != "/$2" {
+		t.Errorf("expected regex_uri[1]='/$2', got '%s'", regexURI[1])
 	}
 }
 
@@ -690,8 +731,15 @@ func TestConvert_RateLimiting_ProducesPluginConfig(t *testing.T) {
 	if !ok {
 		t.Fatal("expected plugin config to be a map")
 	}
-	if cfg["rate"] != "1000" {
-		t.Errorf("expected rate=1000, got '%v'", cfg["rate"])
+	rate, ok := cfg["rate"].(float64)
+	if !ok {
+		t.Fatalf("expected rate to be float64, got %T: %v", cfg["rate"], cfg["rate"])
+	}
+	if rate != 1000 {
+		t.Errorf("expected rate=1000, got %v", rate)
+	}
+	if cfg["burst"] != 5000 {
+		t.Errorf("expected burst=5000 (1000*5), got %v", cfg["burst"])
 	}
 	if cfg["rejected_code"] != "429" {
 		t.Errorf("expected rejected_code=429, got '%v'", cfg["rejected_code"])
@@ -1148,8 +1196,12 @@ func TestConvert_MixedPrefixes_NginxTakesPriority(t *testing.T) {
 		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
 	}
 	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
-	if cfg["rate"] != "50" {
-		t.Errorf("expected nginx prefix to take priority, got rate=%v", cfg["rate"])
+	rate, ok := cfg["rate"].(float64)
+	if !ok {
+		t.Fatalf("expected rate to be float64, got %T: %v", cfg["rate"], cfg["rate"])
+	}
+	if rate != 50 {
+		t.Errorf("expected nginx prefix to take priority, got rate=%v", rate)
 	}
 }
 
@@ -1835,7 +1887,7 @@ func TestWarning_MoreSetHeaders(t *testing.T) {
 	c := newTestConverter()
 	ing := makeTestIngress("headers-ingress", "default",
 		map[string]string{
-			"nginx.ingress.kubernetes.io/configuration-snippet": `more_set_headers "X-Forwarded-For $http_x_forwarded_for";`,
+			"nginx.ingress.kubernetes.io/configuration-snippet": `more_set_headers "X-Forwarded-For: $http_x_forwarded_for";`,
 		},
 		nil,
 		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
@@ -1843,14 +1895,35 @@ func TestWarning_MoreSetHeaders(t *testing.T) {
 
 	result := c.Convert(ing)
 
-	found := false
-	for _, w := range result.Warnings {
-		if strings.Contains(w, "more_set_headers") && strings.Contains(w, "4.1.5") {
-			found = true
+	// more_set_headers is now auto-converted to response-rewrite plugin (no warning expected)
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+
+	pc := result.PluginConfigs[0]
+	var rwPlugin *apisix.Plugin
+	for i := range pc.Spec.Plugins {
+		if pc.Spec.Plugins[i].Name == "response-rewrite" {
+			rwPlugin = &pc.Spec.Plugins[i]
+			break
 		}
 	}
-	if !found {
-		t.Errorf("expected warning for more_set_headers, got warnings: %v", result.Warnings)
+	if rwPlugin == nil {
+		t.Fatal("expected response-rewrite plugin for more_set_headers")
+	}
+
+	cfg := rwPlugin.Config.(map[string]interface{})
+	headers := cfg["headers"].(map[string]interface{})
+	setHeaders := headers["set"].(map[string]string)
+	if setHeaders["X-Forwarded-For"] != "$http_x_forwarded_for" {
+		t.Errorf("expected X-Forwarded-For=$http_x_forwarded_for, got '%s'", setHeaders["X-Forwarded-For"])
+	}
+
+	// No warning about more_set_headers
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "more_set_headers") {
+			t.Errorf("should not warn about more_set_headers, got: %v", w)
+		}
 	}
 }
 
@@ -2186,7 +2259,7 @@ func TestConvert_CORS_FullCustom(t *testing.T) {
 	}
 }
 
-// --- Single Rewrite from configuration-snippet → native annotations ---
+// --- Single Rewrite from configuration-snippet → proxy-rewrite plugin ---
 
 func TestConvert_SingleRewrite_Snippet_NativeAnnotations(t *testing.T) {
 	c := newTestConverter()
@@ -2199,20 +2272,25 @@ func TestConvert_SingleRewrite_Snippet_NativeAnnotations(t *testing.T) {
 	)
 
 	result := c.Convert(ing)
-	out := result.Ingresses[0].(ingress.Ingress)
 
-	// Single rewrite → native annotations (not PluginConfig)
-	if out.Metadata.Annotations["k8s.apisix.apache.org/rewrite-target-regex"] != "^/api/(.*)" {
-		t.Errorf("expected rewrite-target-regex='^/api/(.*)', got '%s'",
-			out.Metadata.Annotations["k8s.apisix.apache.org/rewrite-target-regex"])
+	// Single rewrite → proxy-rewrite plugin in PluginConfig
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
 	}
-	if out.Metadata.Annotations["k8s.apisix.apache.org/rewrite-target-regex-template"] != "/$1" {
-		t.Errorf("expected rewrite-target-regex-template='/$1', got '%s'",
-			out.Metadata.Annotations["k8s.apisix.apache.org/rewrite-target-regex-template"])
+	p := result.PluginConfigs[0].Spec.Plugins[0]
+	if p.Name != "proxy-rewrite" {
+		t.Fatalf("expected proxy-rewrite plugin, got %s", p.Name)
 	}
-	if len(result.PluginConfigs) != 0 {
-		t.Errorf("single rewrite should use native annotations, not PluginConfig, got %d PluginConfigs",
-			len(result.PluginConfigs))
+	cfg := p.Config.(map[string]interface{})
+	regexURI := cfg["regex_uri"].([]string)
+	if len(regexURI) != 2 {
+		t.Fatalf("expected 2 regex_uri entries, got %d", len(regexURI))
+	}
+	if regexURI[0] != "^/api/(.*)" {
+		t.Errorf("expected regex_uri[0]='^/api/(.*)', got '%s'", regexURI[0])
+	}
+	if regexURI[1] != "/$1" {
+		t.Errorf("expected regex_uri[1]='/$1', got '%s'", regexURI[1])
 	}
 }
 
@@ -2501,20 +2579,24 @@ func TestConvert_ProxyCookieFlags_WithRewrite(t *testing.T) {
 
 	result := c.Convert(ing)
 
-	// Single rewrite → native annotation, not PluginConfig for rewrite
-	out := result.Ingresses[0].(ingress.Ingress)
-	if out.Metadata.Annotations["k8s.apisix.apache.org/rewrite-target-regex"] != "^/api/(.*)" {
-		t.Errorf("expected rewrite-target-regex='^/api/(.*)', got '%s'",
-			out.Metadata.Annotations["k8s.apisix.apache.org/rewrite-target-regex"])
+	// Both rewrite and proxy-cookie-flags → 1 PluginConfig with 2 plugins
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
 	}
 
-	// proxy-cookie-flags → PluginConfig
-	if len(result.PluginConfigs) != 1 {
-		t.Fatalf("expected 1 PluginConfig for cookie-flags, got %d", len(result.PluginConfigs))
+	plugins := result.PluginConfigs[0].Spec.Plugins
+	if len(plugins) != 2 {
+		t.Fatalf("expected 2 plugins, got %d", len(plugins))
 	}
-	if result.PluginConfigs[0].Spec.Plugins[0].Name != "proxy-cookie-flags" {
-		t.Errorf("expected proxy-cookie-flags plugin, got '%s'",
-			result.PluginConfigs[0].Spec.Plugins[0].Name)
+
+	// First plugin should be proxy-rewrite
+	if plugins[0].Name != "proxy-rewrite" {
+		t.Errorf("expected first plugin to be proxy-rewrite, got '%s'", plugins[0].Name)
+	}
+
+	// Second plugin should be proxy-cookie-flags
+	if plugins[1].Name != "proxy-cookie-flags" {
+		t.Errorf("expected second plugin to be proxy-cookie-flags, got '%s'", plugins[1].Name)
 	}
 }
 
@@ -2806,8 +2888,15 @@ func TestConvert_LimitMultiplier_AppliesToRPS(t *testing.T) {
 		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
 	}
 	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
-	if cfg["rate"] != "50" {
-		t.Errorf("expected rate=50 (10*5), got '%v'", cfg["rate"])
+	rate, ok := cfg["rate"].(float64)
+	if !ok {
+		t.Fatalf("expected rate to be float64, got %T: %v", cfg["rate"], cfg["rate"])
+	}
+	if rate != 50 {
+		t.Errorf("expected rate=50 (10*5), got %v", rate)
+	}
+	if cfg["burst"] != 250 {
+		t.Errorf("expected burst=250 (50*5), got %v", cfg["burst"])
 	}
 }
 
@@ -2855,8 +2944,81 @@ func TestConvert_LimitMultiplier_InvalidIgnored(t *testing.T) {
 		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
 	}
 	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
-	if cfg["rate"] != "10" {
-		t.Errorf("expected rate=10 (multiplier ignored), got '%v'", cfg["rate"])
+	rate, ok := cfg["rate"].(float64)
+	if !ok {
+		t.Fatalf("expected rate to be float64, got %T: %v", cfg["rate"], cfg["rate"])
+	}
+	if rate != 10 {
+		t.Errorf("expected rate=10 (multiplier ignored), got %v", rate)
+	}
+	if cfg["burst"] != 50 {
+		t.Errorf("expected burst=50 (10*5), got %v", cfg["burst"])
+	}
+}
+
+func TestConvert_BothRPSAndRPM_TakesMoreRestrictive(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("both-rate", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/limit-rps": "10",
+			"nginx.ingress.kubernetes.io/limit-rpm": "300", // 300/60 = 5 rps, more restrictive
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	rate, ok := cfg["rate"].(float64)
+	if !ok {
+		t.Fatalf("expected rate to be float64, got %T: %v", cfg["rate"], cfg["rate"])
+	}
+	if rate != 5 {
+		t.Errorf("expected rate=5 (rpm=300/60 is more restrictive than rps=10), got %v", rate)
+	}
+	if cfg["burst"] != 25 {
+		t.Errorf("expected burst=25 (5*5), got %v", cfg["burst"])
+	}
+
+	// Should warn about both being set
+	foundWarn := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "limit-rps 和 limit-rpm 同时设置") {
+			foundWarn = true
+		}
+	}
+	if !foundWarn {
+		t.Error("expected warning about both limit-rps and limit-rpm being set")
+	}
+}
+
+func TestConvert_BothRPSAndRPM_RPSStricter(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("both-rate-rps", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/limit-rps": "3",
+			"nginx.ingress.kubernetes.io/limit-rpm": "300", // 300/60 = 5 rps, rps is more restrictive
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+	cfg := result.PluginConfigs[0].Spec.Plugins[0].Config.(map[string]interface{})
+	rate, ok := cfg["rate"].(float64)
+	if !ok {
+		t.Fatalf("expected rate to be float64, got %T: %v", cfg["rate"], cfg["rate"])
+	}
+	if rate != 3 {
+		t.Errorf("expected rate=3 (rps=3 is more restrictive than rpm=300/60=5), got %v", rate)
 	}
 }
 
@@ -3592,5 +3754,242 @@ spec:
 	}
 	if len(result.ApisixTls[1].Spec.Hosts) != 2 {
 		t.Errorf("second TLS: expected 2 hosts, got %d", len(result.ApisixTls[1].Spec.Hosts))
+	}
+}
+
+func TestConvert_AddHeader_Single(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("add-header", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/configuration-snippet": `add_header X-Frame-Options "SAMEORIGIN";`,
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+
+	pc := result.PluginConfigs[0]
+	var rwPlugin *apisix.Plugin
+	for i := range pc.Spec.Plugins {
+		if pc.Spec.Plugins[i].Name == "response-rewrite" {
+			rwPlugin = &pc.Spec.Plugins[i]
+			break
+		}
+	}
+	if rwPlugin == nil {
+		t.Fatal("expected response-rewrite plugin in PluginConfig")
+	}
+	if !rwPlugin.Enable {
+		t.Error("expected response-rewrite to be enabled")
+	}
+
+	cfg, ok := rwPlugin.Config.(map[string]interface{})
+	if !ok {
+		t.Fatal("expected plugin config to be a map")
+	}
+	headers, ok := cfg["headers"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected headers to be a map")
+	}
+	setHeaders, ok := headers["set"].(map[string]string)
+	if !ok {
+		t.Fatalf("expected headers.set to be map[string]string, got %T", headers["set"])
+	}
+	if setHeaders["X-Frame-Options"] != "SAMEORIGIN" {
+		t.Errorf("expected X-Frame-Options=SAMEORIGIN, got '%s'", setHeaders["X-Frame-Options"])
+	}
+
+	// No warnings about add_header
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "add_header") {
+			t.Errorf("should not warn about add_header, got: %v", w)
+		}
+	}
+}
+
+func TestConvert_AddHeader_Multiple(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("add-header-multi", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/configuration-snippet": `add_header Content-Security-Policy "default-src 'self';" always;
+add_header X-Frame-Options "SAMEORIGIN";
+add_header X-Content-Type-Options "nosniff";`,
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+
+	pc := result.PluginConfigs[0]
+	var rwPlugin *apisix.Plugin
+	for i := range pc.Spec.Plugins {
+		if pc.Spec.Plugins[i].Name == "response-rewrite" {
+			rwPlugin = &pc.Spec.Plugins[i]
+			break
+		}
+	}
+	if rwPlugin == nil {
+		t.Fatal("expected response-rewrite plugin in PluginConfig")
+	}
+
+	cfg := rwPlugin.Config.(map[string]interface{})
+	headers := cfg["headers"].(map[string]interface{})
+	setHeaders := headers["set"].(map[string]string)
+
+	if len(setHeaders) != 3 {
+		t.Fatalf("expected 3 headers, got %d: %v", len(setHeaders), setHeaders)
+	}
+	if setHeaders["Content-Security-Policy"] != "default-src 'self';" {
+		t.Errorf("CSP header wrong: '%s'", setHeaders["Content-Security-Policy"])
+	}
+	if setHeaders["X-Frame-Options"] != "SAMEORIGIN" {
+		t.Errorf("X-Frame-Options wrong: '%s'", setHeaders["X-Frame-Options"])
+	}
+	if setHeaders["X-Content-Type-Options"] != "nosniff" {
+		t.Errorf("X-Content-Type-Options wrong: '%s'", setHeaders["X-Content-Type-Options"])
+	}
+}
+
+func TestConvert_AddHeader_WithAlways(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("add-header-always", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/configuration-snippet": `add_header Strict-Transport-Security "max-age=31536000" always;`,
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+
+	pc := result.PluginConfigs[0]
+	var rwPlugin *apisix.Plugin
+	for i := range pc.Spec.Plugins {
+		if pc.Spec.Plugins[i].Name == "response-rewrite" {
+			rwPlugin = &pc.Spec.Plugins[i]
+			break
+		}
+	}
+	if rwPlugin == nil {
+		t.Fatal("expected response-rewrite plugin")
+	}
+
+	cfg := rwPlugin.Config.(map[string]interface{})
+	headers := cfg["headers"].(map[string]interface{})
+	setHeaders := headers["set"].(map[string]string)
+
+	if setHeaders["Strict-Transport-Security"] != "max-age=31536000" {
+		t.Errorf("HSTS header wrong: '%s'", setHeaders["Strict-Transport-Security"])
+	}
+}
+
+func TestConvert_AddHeader_WithRewrite(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("add-header-rewrite", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/rewrite-target":        "/",
+			"nginx.ingress.kubernetes.io/configuration-snippet": `add_header X-Custom "value";`,
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/api", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+
+	pc := result.PluginConfigs[0]
+	var hasRewrite, hasResponseRewrite bool
+	for _, p := range pc.Spec.Plugins {
+		switch p.Name {
+		case "proxy-rewrite":
+			hasRewrite = true
+		case "response-rewrite":
+			hasResponseRewrite = true
+			cfg := p.Config.(map[string]interface{})
+			headers := cfg["headers"].(map[string]interface{})
+			setHeaders := headers["set"].(map[string]string)
+			if setHeaders["X-Custom"] != "value" {
+				t.Errorf("X-Custom header wrong: '%s'", setHeaders["X-Custom"])
+			}
+		}
+	}
+	if !hasRewrite {
+		t.Error("expected proxy-rewrite plugin")
+	}
+	if !hasResponseRewrite {
+		t.Error("expected response-rewrite plugin")
+	}
+}
+
+func TestConvert_MoreSetHeaders(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("more-headers", "default",
+		map[string]string{
+			"nginx.ingress.kubernetes.io/configuration-snippet": `more_set_headers "X-Test: hello";
+more_set_headers "X-Another: world";`,
+		},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig, got %d", len(result.PluginConfigs))
+	}
+
+	pc := result.PluginConfigs[0]
+	var rwPlugin *apisix.Plugin
+	for i := range pc.Spec.Plugins {
+		if pc.Spec.Plugins[i].Name == "response-rewrite" {
+			rwPlugin = &pc.Spec.Plugins[i]
+			break
+		}
+	}
+	if rwPlugin == nil {
+		t.Fatal("expected response-rewrite plugin")
+	}
+
+	cfg := rwPlugin.Config.(map[string]interface{})
+	headers := cfg["headers"].(map[string]interface{})
+	setHeaders := headers["set"].(map[string]string)
+
+	if setHeaders["X-Test"] != "hello" {
+		t.Errorf("X-Test header wrong: '%s'", setHeaders["X-Test"])
+	}
+	if setHeaders["X-Another"] != "world" {
+		t.Errorf("X-Another header wrong: '%s'", setHeaders["X-Another"])
+	}
+}
+
+func TestConvert_AddHeader_NoSnippet_NoPlugin(t *testing.T) {
+	c := newTestConverter()
+	ing := makeTestIngress("no-snippet", "default",
+		map[string]string{},
+		nil,
+		[]ingress.IngressRule{makeSimpleRule("app.com", "/", "svc", 80)},
+	)
+
+	result := c.Convert(ing)
+
+	if len(result.PluginConfigs) != 0 {
+		t.Fatalf("expected 0 PluginConfigs, got %d", len(result.PluginConfigs))
 	}
 }

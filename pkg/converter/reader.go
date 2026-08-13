@@ -287,10 +287,21 @@ func WriteConversionFile(path string, result apisix.ConversionResult) error {
 	return os.WriteFile(path, buf.Bytes(), 0644)
 }
 
+// ANSI color codes for terminal output.
+const (
+	colorReset  = "\033[0m"
+	colorBold   = "\033[1m"
+	colorYellow = "\033[33m"
+	colorRed    = "\033[31m"
+	colorCyan   = "\033[36m"
+	colorGreen  = "\033[32m"
+	colorDim    = "\033[2m"
+)
+
 // FormatResultSummary returns a human-readable summary of the conversion.
 func FormatResultSummary(result apisix.ConversionResult) string {
 	var sb strings.Builder
-	sb.WriteString("Conversion Summary:\n")
+	sb.WriteString(colorBold + "Conversion Summary:" + colorReset + "\n")
 
 	formatStr := "single-document"
 	switch result.InputFormat {
@@ -307,16 +318,27 @@ func FormatResultSummary(result apisix.ConversionResult) string {
 	sb.WriteString(fmt.Sprintf("  ApisixTls:          %d\n", len(result.ApisixTls)))
 
 	if len(result.Warnings) > 0 {
-		sb.WriteString(fmt.Sprintf("\nWarnings (%d):\n", len(result.Warnings)))
+		sb.WriteString(fmt.Sprintf("\n%sWarnings (%d):%s\n", colorYellow, len(result.Warnings), colorReset))
 		for _, w := range result.Warnings {
-			sb.WriteString(fmt.Sprintf("  - %s\n", w))
+			sb.WriteString(fmt.Sprintf("  %s- %s%s\n", colorYellow, w, colorReset))
+		}
+	}
+
+	if len(result.CRDHints) > 0 {
+		sb.WriteString(fmt.Sprintf("\n%sCRD Examples (需手动创建):%s\n", colorCyan, colorReset))
+		for _, crd := range result.CRDHints {
+			sb.WriteString(colorCyan)
+			for _, line := range strings.Split(crd, "\n") {
+				sb.WriteString("  " + line + "\n")
+			}
+			sb.WriteString(colorReset)
 		}
 	}
 
 	if len(result.Errors) > 0 {
-		sb.WriteString(fmt.Sprintf("\nErrors (%d):\n", len(result.Errors)))
+		sb.WriteString(fmt.Sprintf("\n%sErrors (%d):%s\n", colorRed, len(result.Errors), colorReset))
 		for _, e := range result.Errors {
-			sb.WriteString(fmt.Sprintf("  - %s\n", e))
+			sb.WriteString(fmt.Sprintf("  %s- %s%s\n", colorRed, e, colorReset))
 		}
 	}
 

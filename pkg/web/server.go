@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -90,7 +91,7 @@ type docMeta struct {
 	size    int64
 }
 
-// scanDocs reads all .md files from the docs directory and caches them.
+// scanDocs reads all .md files from the docs directory (recursively) and caches them.
 // Uses mtime+size to skip re-reading unchanged files.
 func (s *Server) scanDocs() {
 	dir := s.docsDir
@@ -98,27 +99,27 @@ func (s *Server) scanDocs() {
 		return
 	}
 
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-
-	// Collect current file info for change detection
+	// Collect current file info for change detection (recursive)
 	current := make(map[string]docMeta)
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-			continue
+	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
+			return nil
 		}
-		info, err := entry.Info()
+		info, err := d.Info()
 		if err != nil {
-			continue
+			return nil
 		}
-		name := strings.TrimSuffix(entry.Name(), ".md")
+		// Get relative path from docs dir and remove .md extension
+		relPath, _ := filepath.Rel(dir, path)
+		name := strings.TrimSuffix(relPath, ".md")
+		// Normalize path separators to forward slashes for cross-platform compatibility
+		name = filepath.ToSlash(name)
 		current[name] = docMeta{
 			modTime: info.ModTime().UnixNano(),
 			size:    info.Size(),
 		}
-	}
+		return nil
+	})
 
 	// Check if anything changed
 	s.docsMu.RLock()
@@ -137,29 +138,34 @@ func (s *Server) scanDocs() {
 		return
 	}
 
-	// Something changed — rebuild cache
+	// Something changed — rebuild cache (recursive)
 	var docs []DocInfo
 	content := make(map[string][]byte)
 	meta := make(map[string]docMeta)
 
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-			continue
+	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
+			return nil
 		}
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		data, err := os.ReadFile(path)
 		if err != nil {
-			continue
+			return nil
 		}
-		name := strings.TrimSuffix(entry.Name(), ".md")
-		title := extractTitleFromData(data, entry.Name())
+		// Get relative path from docs dir and remove .md extension
+		relPath, _ := filepath.Rel(dir, path)
+		name := strings.TrimSuffix(relPath, ".md")
+		// Normalize path separators to forward slashes for cross-platform compatibility
+		name = filepath.ToSlash(name)
+		title := extractTitleFromData(data, d.Name())
 		docs = append(docs, DocInfo{
 			Name:  name,
 			Title: title,
-			File:  entry.Name(),
+			File:  relPath,
 		})
 		content[name] = data
 		meta[name] = current[name]
-	}
+		return nil
+	})
 
 	sort.Slice(docs, func(i, j int) bool {
 		return docs[i].File < docs[j].File
@@ -183,7 +189,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/download/migrate-tar", s.handleDownloadMigrateTar)
 	s.mux.HandleFunc("/api/docs/list", s.handleDocList)
 	s.mux.HandleFunc("/api/docs/upload", s.handleDocUpload)
-	s.mux.HandleFunc("/api/docs/{name}", s.handleDocDynamic)
+	s.mux.HandleFunc("/api/docs/{name...}", s.handleDocDynamic)
 	// s.mux.HandleFunc("/api/feedback", s.handleFeedback)
 	s.mux.HandleFunc("/api/announcements", s.handleAnnouncements)
 	s.RegisterUploadRoutes()
@@ -708,6 +714,77 @@ type DocInfo struct {
 	File  string `json:"file"`
 }
 
+// DocTreeNode represents a directory or file in the documentation tree.
+type DocTreeNode struct {
+	Name     string         `json:"name"`
+	Path     string         `json:"path,omitempty"`
+	Title    string         `json:"title,omitempty"`
+	IsDir    bool           `json:"isDir"`
+	Children []*DocTreeNode `json:"children,omitempty"`
+}
+
+// buildDocTree constructs a tree structure from a flat list of docs.
+func buildDocTree(docs []DocInfo) []*DocTreeNode {
+	root := &DocTreeNode{
+		Name:     "",
+		Children: []*DocTreeNode{},
+	}
+
+	for _, doc := range docs {
+		parts := strings.Split(doc.Name, "/")
+		current := root
+
+		// Navigate/create directory nodes
+		for i := 0; i < len(parts)-1; i++ {
+			dirName := parts[i]
+			found := false
+			for _, child := range current.Children {
+				if child.Name == dirName && child.IsDir {
+					current = child
+					found = true
+					break
+				}
+			}
+			if !found {
+				newDir := &DocTreeNode{
+					Name:     dirName,
+					Path:     strings.Join(parts[:i+1], "/"),
+					IsDir:    true,
+					Children: []*DocTreeNode{},
+				}
+				current.Children = append(current.Children, newDir)
+				current = newDir
+			}
+		}
+
+		// Add file node
+		fileNode := &DocTreeNode{
+			Name:  parts[len(parts)-1],
+			Path:  doc.Name,
+			Title: doc.Title,
+			IsDir: false,
+		}
+		current.Children = append(current.Children, fileNode)
+	}
+
+	// Sort children: directories first, then files, alphabetically
+	var sortTree func(node *DocTreeNode)
+	sortTree = func(node *DocTreeNode) {
+		for _, child := range node.Children {
+			sortTree(child)
+		}
+		sort.Slice(node.Children, func(i, j int) bool {
+			if node.Children[i].IsDir != node.Children[j].IsDir {
+				return node.Children[i].IsDir
+			}
+			return node.Children[i].Name < node.Children[j].Name
+		})
+	}
+	sortTree(root)
+
+	return root.Children
+}
+
 // handleDocDynamic serves any markdown document by name, checking runtime filesystem first, then embedded FS.
 func (s *Server) handleDocDynamic(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
@@ -769,9 +846,14 @@ func (s *Server) handleDocList(w http.ResponseWriter, r *http.Request) {
 	if docs == nil {
 		docs = []DocInfo{}
 	}
+
+	// Build tree structure
+	tree := buildDocTree(docs)
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"data":    docs,
+		"tree":    tree,
 	})
 }
 

@@ -622,7 +622,7 @@ plugins:
     enable: true
     config:
       source: http_x_forwarded_for                                  # Default — hardcoded, same as nginx default
-      trusted_addresses:                                             # Default — hardcoded to accept all
+      trusted_addresses:                                            # Default — hardcoded to accept all, configure network segment arrays as needed.
         - "0.0.0.0/0"
       recursive: false                                               # Default — hardcoded default
 ```

@@ -936,13 +936,13 @@ func TestDefaultHints_LimitReqPlugin(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	output := buf.String()
-	if !strings.Contains(output, `burst: 0  # Default — hardcoded, same as nginx default`) {
+	if !strings.Contains(output, `burst: 500  # Default — burst=100×5=500, formula=rate×burst-multiplier (default 5)`) {
 		t.Errorf("expected default hint for burst:\n%s", output)
 	}
-	if !strings.Contains(output, `key: remote_addr  # Default — hardcoded, same as nginx default`) {
+	if !strings.Contains(output, `key: remote_addr  # Default — hardcoded, same as nginx default (remote_addr)`) {
 		t.Errorf("expected default hint for key:\n%s", output)
 	}
-	if !strings.Contains(output, `rejected_code: "429"  # Default — hardcoded, same as nginx default`) {
+	if !strings.Contains(output, `rejected_code: "429"  # Default — hardcoded, same as nginx default (503 in ingress-nginx, 429 in APISIX)`) {
 		t.Errorf("expected default hint for rejected_code:\n%s", output)
 	}
 }

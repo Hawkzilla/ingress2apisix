@@ -3,7 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   {
     path: '/',
-    redirect: '/convert',
+    redirect: '/docs',
   },
   {
     path: '/convert',
@@ -24,7 +24,7 @@ const routes = [
     meta: { title: 'Documentation' },
   },
   {
-    path: '/docs/:name',
+    path: '/docs/:name(.*)',
     name: 'doc-detail',
     component: () => import('@/views/DocsPage.vue'),
     meta: { title: 'Documentation' },
@@ -49,7 +49,7 @@ const routes = [
   },
   {
     path: '/:pathMatch(.*)*',
-    redirect: '/convert',
+    redirect: '/docs',
   },
 ]
 

@@ -267,22 +267,27 @@ func TestGatewayConvert_RewriteTarget_Simple(t *testing.T) {
 		t.Fatalf("expected 1 HTTPRoute, got %d", len(result.HTTPRoutes))
 	}
 
+	// rewrite-target now uses proxy-rewrite plugin via ExtensionRef
+	if len(result.PluginConfigs) != 1 {
+		t.Fatalf("expected 1 PluginConfig for proxy-rewrite, got %d", len(result.PluginConfigs))
+	}
+	p := result.PluginConfigs[0].Spec.Plugins[0]
+	if p.Name != "proxy-rewrite" {
+		t.Fatalf("expected proxy-rewrite plugin, got %s", p.Name)
+	}
+
 	rule := result.HTTPRoutes[0].Spec.Rules[0]
-	if len(rule.Filters) != 1 {
-		t.Fatalf("expected 1 filter, got %d", len(rule.Filters))
+	// Should have 2 filters: URLRewrite (from rewrite-target) + ExtensionRef (from proxy-rewrite plugin)
+	if len(rule.Filters) != 2 {
+		t.Fatalf("expected 2 filters (URLRewrite + ExtensionRef), got %d", len(rule.Filters))
 	}
-	f := rule.Filters[0]
-	if f.Type != "URLRewrite" {
-		t.Errorf("expected URLRewrite, got %s", f.Type)
+	// First filter should be URLRewrite
+	if rule.Filters[0].Type != "URLRewrite" {
+		t.Errorf("expected first filter to be URLRewrite, got %s", rule.Filters[0].Type)
 	}
-	if f.URLRewrite == nil || f.URLRewrite.Path == nil {
-		t.Fatal("expected URLRewrite path")
-	}
-	if f.URLRewrite.Path.Type != "ReplaceFullPath" {
-		t.Errorf("expected ReplaceFullPath, got %s", f.URLRewrite.Path.Type)
-	}
-	if f.URLRewrite.Path.Value != "/" {
-		t.Errorf("expected path /, got %s", f.URLRewrite.Path.Value)
+	// Second filter should be ExtensionRef
+	if rule.Filters[1].Type != "ExtensionRef" {
+		t.Errorf("expected second filter to be ExtensionRef, got %s", rule.Filters[1].Type)
 	}
 }
 

@@ -217,6 +217,9 @@ type ConversionResult struct {
 	Warnings []string
 	// InputFormat records how the original input was structured.
 	InputFormat InputFormat
+	// CRDHints maps annotation name → complete CRD YAML example for manual migration.
+	// Displayed after warnings with syntax highlighting.
+	CRDHints map[string]string
 }
 
 // --- Gateway API types ---

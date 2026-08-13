@@ -1,7 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, watch, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocsStore } from '@/stores/docs'
+import mermaid from 'mermaid'
+
+// Initialize mermaid (startOnLoad: false — we render manually via mermaid.run)
+let mermaidCounter = 0
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'default',
+  securityLevel: 'loose',
+})
 
 const route = useRoute()
 const router = useRouter()
@@ -20,13 +29,41 @@ function slugify(text: string): string {
     .trim()
 }
 
-// Filter docs list
-const filteredDocs = computed(() => {
-  if (!searchQuery.value.trim()) return docs.docs
+// Normalize anchor ID for matching (handles spaces, slashes, etc.)
+function normalizeAnchorId(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[\s/]+/g, '-') // replace spaces and slashes with hyphens
+    .replace(/[^\w\u4e00-\u9fff-]/g, '') // remove special chars except hyphens
+    .replace(/-+/g, '-') // collapse multiple hyphens
+    .trim()
+}
+
+// Filter tree based on search query
+const filteredTree = computed(() => {
+  if (!searchQuery.value.trim()) return docs.docTree
   const q = searchQuery.value.toLowerCase()
-  return docs.docs.filter(
-    (d) => d.title.toLowerCase().includes(q) || d.name.toLowerCase().includes(q)
-  )
+
+  function filterNode(node: any): any | null {
+    if (node.isDir) {
+      const filteredChildren = node.children
+        ?.map(filterNode)
+        .filter(Boolean) ?? []
+      if (filteredChildren.length > 0) {
+        return { ...node, children: filteredChildren }
+      }
+      return null
+    }
+    // File node
+    if (node.title?.toLowerCase().includes(q) || node.name?.toLowerCase().includes(q)) {
+      return node
+    }
+    return null
+  }
+
+  return docs.docTree
+    .map(filterNode)
+    .filter(Boolean)
 })
 
 interface TocItem {
@@ -85,8 +122,8 @@ onMounted(() => {
 
 watch(() => route.params.name, handleRoute)
 
-// Scroll to hash after content loads
-watch(() => docs.currentDocContent, () => {
+// Scroll to hash after content loads and render mermaid diagrams
+watch(() => docs.currentDocContent, async () => {
   if (docs.currentDocContent && route.hash) {
     const id = route.hash.slice(1) // remove leading #
     // Wait for DOM to render
@@ -97,6 +134,8 @@ watch(() => docs.currentDocContent, () => {
       }
     }, 100)
   }
+  // Render mermaid diagrams after content loads
+  await renderMermaidDiagrams()
 })
 
 function handleRoute() {
@@ -177,6 +216,12 @@ function renderMd(md: string): string {
 
   // Fenced code blocks with syntax highlighting
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    // Mermaid code blocks - generate placeholder for client-side rendering
+    if (lang === 'mermaid') {
+      mermaidCounter++
+      const id = `mermaid-diagram-${mermaidCounter}`
+      return `<div class="mermaid-placeholder" data-mermaid-id="${id}">${escapeHtml(code.trim())}</div>`
+    }
     const highlighted = highlightCode(code.trim(), lang)
     return `<pre class="code-block"><code class="lang-${lang}">${highlighted}</code></pre>`
   })
@@ -268,6 +313,46 @@ function escapeHtml(s: string): string {
     .replace(/>/g, '&gt;')
 }
 
+// Render mermaid diagrams after content is loaded
+async function renderMermaidDiagrams() {
+  await nextTick()
+  // Small delay to ensure DOM is fully rendered
+  await new Promise(resolve => setTimeout(resolve, 100))
+
+  const mermaidElements = document.querySelectorAll('.mermaid-placeholder[data-mermaid-id]')
+  const nodesToRender: HTMLElement[] = []
+
+  for (const el of mermaidElements) {
+    const code = el.textContent || ''
+    if (!code.trim()) continue
+
+    // Replace placeholder with a proper .mermaid div
+    const container = document.createElement('div')
+    container.className = 'mermaid'
+    container.innerHTML = code
+    el.parentNode?.replaceChild(container, el)
+    nodesToRender.push(container)
+  }
+
+  if (nodesToRender.length === 0) return
+
+  try {
+    // Use mermaid.run() with nodes parameter — handles entity decoding, rendering, and innerHTML update
+    await mermaid.run({ nodes: nodesToRender, suppressErrors: false })
+  } catch (err) {
+    console.error('Mermaid render error:', err)
+    // Mark failed diagrams with error display
+    for (const node of nodesToRender) {
+      if (!node.querySelector('svg')) {
+        const errorDiv = document.createElement('div')
+        errorDiv.className = 'mermaid-error'
+        errorDiv.textContent = `Mermaid Error: ${err instanceof Error ? err.message : String(err)}\n\n${node.textContent || ''}`
+        node.parentNode?.replaceChild(errorDiv, node)
+      }
+    }
+  }
+}
+
 function handleContentClick(e: MouseEvent) {
   const target = e.target as HTMLElement
   const link = target.closest('a.doc-link') as HTMLAnchorElement | null
@@ -286,10 +371,22 @@ function handleContentClick(e: MouseEvent) {
 
   // Anchor link within current doc
   if (href.startsWith('#')) {
-    const id = decodeURIComponent(href.slice(1))
-    history.replaceState(null, '', `#${id}`)
-    const el = document.getElementById(id)
+    const rawId = decodeURIComponent(href.slice(1))
+    // Try exact match first, then normalized match
+    let el = document.getElementById(rawId)
+    if (!el) {
+      // Try matching with normalized IDs (handles spaces, slashes, etc.)
+      const normalized = normalizeAnchorId(rawId)
+      const headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6')
+      for (const heading of headings) {
+        if (normalizeAnchorId(heading.textContent || '') === normalized) {
+          el = heading as HTMLElement
+          break
+        }
+      }
+    }
     if (el) {
+      history.replaceState(null, '', `#${el.id}`)
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
     return
@@ -345,16 +442,74 @@ function scrollToHeading(id: string) {
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
           <span>Catalog</span>
         </button>
-        <button
-          v-for="doc in filteredDocs"
-          :key="doc.name"
-          class="doc-item"
-          :class="{ active: route.params.name === doc.name }"
-          @click="selectDoc(doc.name)"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-          <span>{{ doc.title }}</span>
-        </button>
+        <template v-for="node in filteredTree" :key="node.path || node.name">
+          <!-- Directory node -->
+          <div v-if="node.isDir" class="dir-node">
+            <button
+              class="doc-item dir-item"
+              @click="docs.toggleDir(node.path)"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                class="dir-icon"
+                :class="{ expanded: docs.isDirExpanded(node.path) }"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>{{ node.name }}</span>
+            </button>
+            <div v-if="docs.isDirExpanded(node.path)" class="dir-children">
+              <button
+                v-for="child in node.children"
+                :key="child.path || child.name"
+                class="doc-item"
+                :class="{ active: route.params.name === child.path }"
+                @click="child.isDir ? docs.toggleDir(child.path) : selectDoc(child.path)"
+              >
+                <template v-if="child.isDir">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    class="dir-icon"
+                    :class="{ expanded: docs.isDirExpanded(child.path) }"
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  </svg>
+                  <span>{{ child.name }}</span>
+                </template>
+                <template v-else>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                  <span>{{ child.title || child.name }}</span>
+                </template>
+              </button>
+            </div>
+          </div>
+          <!-- File node at root level -->
+          <button
+            v-else
+            class="doc-item"
+            :class="{ active: route.params.name === node.path }"
+            @click="selectDoc(node.path)"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+            <span>{{ node.title || node.name }}</span>
+          </button>
+        </template>
       </div>
 
       <!-- Resize handle -->
@@ -381,15 +536,49 @@ function scrollToHeading(id: string) {
         <h1 class="catalog-title">Documentation Library</h1>
         <p class="catalog-subtitle">Browse migration guides, annotation references, and conversion examples.</p>
         <div class="catalog-grid">
-          <button
-            v-for="doc in docs.docs"
-            :key="doc.name"
-            class="catalog-card glass-card"
-            @click="selectDoc(doc.name)"
-          >
-            <h3>{{ doc.title }}</h3>
-            <p class="doc-filename">{{ doc.file }}</p>
-          </button>
+          <template v-for="node in docs.docTree" :key="node.path || node.name">
+            <!-- Directory card -->
+            <div v-if="node.isDir" class="catalog-dir glass-card">
+              <div class="catalog-dir-header" @click="docs.toggleDir(node.path)">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  class="dir-icon"
+                  :class="{ expanded: docs.isDirExpanded(node.path) }"
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+                <h3>{{ node.name }}</h3>
+              </div>
+              <div v-if="docs.isDirExpanded(node.path)" class="catalog-dir-children">
+                <button
+                  v-for="child in node.children"
+                  :key="child.path || child.name"
+                  class="catalog-card glass-card"
+                  @click="selectDoc(child.path)"
+                >
+                  <h3>{{ child.title || child.name }}</h3>
+                  <p class="doc-filename">{{ child.path }}</p>
+                </button>
+              </div>
+            </div>
+            <!-- File card -->
+            <button
+              v-else
+              class="catalog-card glass-card"
+              @click="selectDoc(node.path)"
+            >
+              <h3>{{ node.title || node.name }}</h3>
+              <p class="doc-filename">{{ node.path }}</p>
+            </button>
+          </template>
         </div>
       </div>
     </div>
@@ -461,6 +650,29 @@ function scrollToHeading(id: string) {
   flex: 1;
   overflow-y: auto;
   padding: 4px 6px;
+}
+
+.dir-node {
+  margin-bottom: 2px;
+}
+
+.dir-item {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.dir-icon {
+  transition: transform 0.15s ease;
+}
+
+.dir-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.dir-children {
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+  margin-left: 18px;
 }
 
 .doc-item {
@@ -881,6 +1093,38 @@ function scrollToHeading(id: string) {
   line-height: 1.5;
 }
 
+.catalog-dir {
+  grid-column: 1 / -1;
+  padding: 0;
+  overflow: hidden;
+}
+
+.catalog-dir-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.catalog-dir-header:hover {
+  background: var(--bg-hover);
+}
+
+.catalog-dir-header h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.catalog-dir-children {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  padding: 0 18px 14px 40px;
+}
+
 .doc-size {
   display: inline-block;
   margin-top: 8px;
@@ -956,5 +1200,46 @@ function scrollToHeading(id: string) {
 .toc-level-3 {
   padding-left: 28px;
   font-size: 0.76rem;
+}
+
+/* Mermaid diagrams */
+.doc-rendered :deep(.mermaid-placeholder) {
+  margin: 16px 0;
+  text-align: center;
+  overflow-x: auto;
+  padding: 16px;
+  background: var(--bg-hover);
+  border-radius: 10px;
+  border: 0.5px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+.doc-rendered :deep(.mermaid) {
+  margin: 16px 0;
+  text-align: center;
+  overflow-x: auto;
+  padding: 16px;
+  background: var(--bg-hover);
+  border-radius: 10px;
+  border: 0.5px solid var(--border);
+}
+
+.doc-rendered :deep(.mermaid svg) {
+  max-width: 100%;
+  height: auto;
+}
+
+.doc-rendered :deep(.mermaid-error) {
+  color: #e74c3c;
+  background: rgba(231, 76, 60, 0.05);
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 16px 0;
 }
 </style>
