@@ -5,6 +5,9 @@
 # Binary
 bin/
 
+# Build artifacts
+/dist/
+
 # Output files
 examples/output.yaml
 

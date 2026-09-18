@@ -1,0 +1,453 @@
+# APISIX 使用手册演示资源（通用模板）
+# 用法：
+#   kubectl apply --dry-run=server -f examples/apisix-manual-demo.yaml   # 语法/准入校验
+#   kubectl apply -f examples/apisix-manual-demo.yaml                    # 正式创建
+#   kubectl delete -f examples/apisix-manual-demo.yaml                   # 清理
+#
+# 注意：
+# 1) 本文件使用 default 命名空间仅为演示。若集群使用 Raptor 等网络租户，
+#    新命名空间必须先加入租户，否则 Pod 会一直 ContainerCreating。
+# 2) 使用前请替换：<registry>（镜像仓库）、<KEEPALIVED_VIP> 与 <HTTP_PORT>（网关入口）、
+#    example.com 域名（实际业务域名）、IngressClass apisix（用 kubectl get ingressclass 获取），
+#    验证时可绕过 DNS：curl -H 'Host: <域名>' http://<KEEPALIVED_VIP>:<HTTP_PORT>/。
+# 3) demo-tls 需要先手动创建证书：
+#      openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/tls.key -out /tmp/tls.crt -days 30 \
+#        -subj "/CN=demo-tls.example.com" \
+#        -addext "subjectAltName=DNS:demo-tls.example.com"
+#      kubectl -n default create secret tls demo-tls-secret --cert=/tmp/tls.crt --key=/tmp/tls.key
+---
+# ---------- 演示后端：两个版本（用于观察轮询/亲和/重写效果） ----------
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: demo-v1-conf, namespace: default}
+data:
+  default.conf: |
+    server {
+      listen 80;
+      server_name _;
+      location / {
+        add_header X-Backend "v1" always;
+        add_header X-Got-User $http_x_user always;
+        add_header X-Request-URI $request_uri always;
+        return 200 "backend-v1 uri=$request_uri\n";
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: demo-v2-conf, namespace: default}
+data:
+  default.conf: |
+    server {
+      listen 80;
+      server_name _;
+      location / {
+        add_header X-Backend "v2" always;
+        add_header X-Got-User $http_x_user always;
+        add_header X-Request-URI $request_uri always;
+        return 200 "backend-v2 uri=$request_uri\n";
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: demo-v1, namespace: default, labels: {app: demo, version: v1}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: demo, version: v1}}
+  template:
+    metadata: {labels: {app: demo, version: v1}}
+    spec:
+      tolerations: [{key: node.es.io/prometheus, operator: Equal, value: "true", effect: NoSchedule}]
+      containers:
+        - name: nginx
+          image: <registry>/nginx:<tag>
+          ports: [{containerPort: 80}]
+          volumeMounts: [{name: conf, mountPath: /etc/nginx/conf.d, readOnly: true}]
+      volumes: [{name: conf, configMap: {name: demo-v1-conf}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: demo-v2, namespace: default, labels: {app: demo, version: v2}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: demo, version: v2}}
+  template:
+    metadata: {labels: {app: demo, version: v2}}
+    spec:
+      tolerations: [{key: node.es.io/prometheus, operator: Equal, value: "true", effect: NoSchedule}]
+      containers:
+        - name: nginx
+          image: <registry>/nginx:<tag>
+          ports: [{containerPort: 80}]
+          volumeMounts: [{name: conf, mountPath: /etc/nginx/conf.d, readOnly: true}]
+      volumes: [{name: conf, configMap: {name: demo-v2-conf}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: demo, namespace: default}
+spec:
+  selector: {app: demo}
+  ports: [{name: http, port: 80, targetPort: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: demo-v1, namespace: default}
+spec:
+  selector: {app: demo, version: v1}
+  ports: [{name: http, port: 80, targetPort: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: demo-v2, namespace: default}
+spec:
+  selector: {app: demo, version: v2}
+  ports: [{name: http, port: 80, targetPort: 80}]
+---
+# ---------- 外部认证服务（forward-auth 示例用） ----------
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: demo-authsvc-conf, namespace: default}
+data:
+  default.conf: |
+    server {
+      listen 80;
+      server_name _;
+      location /allow {
+        add_header X-User "alice" always;
+        add_header X-Role "admin" always;
+        return 200 "auth-ok\n";
+      }
+      location /deny { return 403 "auth-denied\n"; }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: demo-authsvc, namespace: default, labels: {app: demo-authsvc}}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: demo-authsvc}}
+  template:
+    metadata: {labels: {app: demo-authsvc}}
+    spec:
+      tolerations: [{key: node.es.io/prometheus, operator: Equal, value: "true", effect: NoSchedule}]
+      containers:
+        - name: nginx
+          image: <registry>/nginx:<tag>
+          ports: [{containerPort: 80}]
+          volumeMounts: [{name: conf, mountPath: /etc/nginx/conf.d, readOnly: true}]
+      volumes: [{name: conf, configMap: {name: demo-authsvc-conf}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: demo-authsvc, namespace: default}
+spec:
+  selector: {app: demo-authsvc}
+  ports: [{name: http, port: 80, targetPort: 80}]
+---
+# ---------- Ingress：基础路由 / 重写 / 正则 / 精确匹配 ----------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: demo-basic, namespace: default}
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-rewrite
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/rewrite-target: /new-path
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-rewrite.example.com
+      http:
+        paths: [{path: /api, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-rewrite-regex
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/rewrite-target-regex: "^/api/(.*)"
+    k8s.apisix.apache.org/rewrite-target-regex-template: "/backend/$1"
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-regex.example.com
+      http:
+        paths: [{path: /api, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-regexpath
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/use-regex: "true"
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-regexpath.example.com
+      http:
+        paths: [{path: "/users/[0-9]+", pathType: ImplementationSpecific, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: demo-exact, namespace: default}
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-exact.example.com
+      http:
+        paths:
+          - {path: /exact, pathType: Exact, backend: {service: {name: demo, port: {number: 80}}}}
+          - {path: /multi, pathType: Prefix, backend: {service: {name: demo-v1, port: {number: 80}}}}
+---
+# ---------- Ingress：安全（CORS / IP 白名单 / 方法 / CSRF） ----------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-cors
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/enable-cors: "true"
+    k8s.apisix.apache.org/cors-allow-origin: "https://allowed.example"
+    k8s.apisix.apache.org/cors-allow-methods: "GET,POST"
+    k8s.apisix.apache.org/cors-allow-headers: "Origin,Authorization"
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-cors.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-ip-allow
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/allowlist-source-range: "10.0.0.0/8"
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-ip-allow.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-methods
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/http-block-methods: "DELETE"
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-methods.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-csrf
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/enable-csrf: "true"
+    k8s.apisix.apache.org/csrf-key: "demo-csrf-key"
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-csrf.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+# ---------- Ingress：响应处理（重定向 / 响应改写 / 超时） ----------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-redirect
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/http-redirect: "/anything$uri"
+    k8s.apisix.apache.org/http-redirect-code: "308"
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-redirect.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-resp
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/enable-response-rewrite: "true"
+    k8s.apisix.apache.org/response-rewrite-status-code: "403"
+    k8s.apisix.apache.org/response-rewrite-body: "Access denied"
+    k8s.apisix.apache.org/response-rewrite-set-header: "X-Reason:Forbidden"
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-resp.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-timeout
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/upstream-connect-timeout: "3s"
+    k8s.apisix.apache.org/upstream-read-timeout: "10s"
+    k8s.apisix.apache.org/upstream-send-timeout: "10s"
+    k8s.apisix.apache.org/upstream-retries: "2"
+    k8s.apisix.apache.org/upstream-scheme: "http"
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-timeout.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+# ---------- 认证：Consumer + Ingress 注解 ----------
+apiVersion: apisix.apache.org/v2
+kind: ApisixConsumer
+metadata: {name: demo-consumer, namespace: default}
+spec:
+  ingressClassName: apisix
+  authParameter:
+    keyAuth:
+      value: {key: demo-key-123}
+---
+apiVersion: apisix.apache.org/v2
+kind: ApisixConsumer
+metadata: {name: demo-basicuser, namespace: default}
+spec:
+  ingressClassName: apisix
+  authParameter:
+    basicAuth:
+      value: {username: demo, password: demo-pass}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-auth
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/auth-type: keyAuth
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-auth.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-basicauth
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/auth-type: basicAuth
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-basicauth.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-fwd
+  namespace: default
+  annotations:
+    # 认证服务地址按实际 ClusterIP 替换：kubectl -n default get svc demo-authsvc -o jsonpath='{.spec.clusterIP}'
+    k8s.apisix.apache.org/auth-uri: "http://<demo-authsvc-clusterIP>/allow"
+    k8s.apisix.apache.org/auth-request-headers: "Authorization"
+    k8s.apisix.apache.org/auth-upstream-headers: "X-User,X-Role"
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-fwd.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+# ---------- 限流：ApisixPluginConfig + Ingress 引用 ----------
+apiVersion: apisix.apache.org/v2
+kind: ApisixPluginConfig
+metadata: {name: demo-ratelimit, namespace: default}
+spec:
+  ingressClassName: apisix
+  plugins:
+    - name: limit-count
+      enable: true
+      config: {count: 3, time_window: 60, rejected_code: 429, key_type: var, key: remote_addr}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-ratelimit
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/plugin-config-name: demo-ratelimit
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-ratelimit.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
+---
+# ---------- 会话亲和 / 跨命名空间 / TLS ----------
+apiVersion: apisix.apache.org/v1alpha1
+kind: BackendTrafficPolicy
+metadata: {name: demo-affinity, namespace: default}
+spec:
+  targetRefs:
+    - {group: "", kind: Service, name: demo}
+  loadbalancer: {type: chash, hashOn: cookie, key: demo-route}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-crossns
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/svc-namespace: other-namespace   # 替换为真实的后端命名空间
+spec:
+  ingressClassName: apisix
+  rules:
+    - host: demo-crossns.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: other-svc, port: {number: 80}}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-tls
+  namespace: default
+  annotations:
+    k8s.apisix.apache.org/http-to-https: "true"
+spec:
+  ingressClassName: apisix
+  tls:
+    - hosts: ["demo-tls.example.com"]
+      secretName: demo-tls-secret
+  rules:
+    - host: demo-tls.example.com
+      http:
+        paths: [{path: /, pathType: Prefix, backend: {service: {name: demo, port: {number: 80}}}}]
